@@ -1,5 +1,6 @@
 import json
 import re
+import time
 import requests
 from typing import Optional, Dict, Any
 from config import load_settings
@@ -98,9 +99,9 @@ def test_ai_connection(api_base: str, api_key: str, model: str) -> dict:
             ],
             "max_tokens": 5
         }
-        t0 = requests.compat.time.time()
+        t0 = time.time()
         resp = requests.post(url, headers=headers, json=payload, timeout=6)
-        elapsed = round(requests.compat.time.time() - t0, 2)
+        elapsed = round(time.time() - t0, 2)
         if resp.status_code == 200:
             return {"ok": True, "message": f"连接成功 (耗时 {elapsed}s)", "status": 200}
         else:
