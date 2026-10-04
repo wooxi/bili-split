@@ -1,4 +1,4 @@
-/* 滚动条 */
+/* 自定义滚动条 */
 ::-webkit-scrollbar {
     width: 5px;
     height: 5px;
@@ -14,7 +14,7 @@
     background: rgba(148, 163, 184, 0.4);
 }
 
-/* 表格内输入框 */
+/* 表格内行内轻量编辑输入框 */
 .cell-input {
     background: transparent;
     border: 1px solid transparent;
@@ -31,12 +31,12 @@
 }
 
 .cell-input:focus {
-    background: #0c1017;
+    background: #090c10;
     border-color: #10b981;
     outline: none;
 }
 
-/* 播放器进度条样式定制 */
+/* 播放器滑块定制 */
 input[type="range"]::-webkit-slider-thumb {
     appearance: none;
     width: 10px;
@@ -51,7 +51,7 @@ input[type="range"]:hover::-webkit-slider-thumb {
     transform: scale(1.2);
 }
 
-/* 行悬浮 */
+/* 表格行悬浮 */
 .table-row-hover:hover {
     background-color: rgba(255, 255, 255, 0.02);
 }

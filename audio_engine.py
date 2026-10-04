@@ -30,6 +30,34 @@ HEADERS = {
     "Referer": "https://www.bilibili.com/"
 }
 
+def is_audio_file_valid(file_path: str) -> bool:
+    """
+    智能检测音频文件是否完整无损：
+    1. 必须存在且大小 > 50KB (杜绝 0 字节或切片残缺文件)
+    2. 能通过 Mutagen 元数据解析并探测出有效时长
+    """
+    if not os.path.exists(file_path):
+        return False
+    try:
+        size = os.path.getsize(file_path)
+        if size < 50 * 1024:
+            return False
+            
+        ext = os.path.splitext(file_path)[1].lower()
+        if ext == ".flac":
+            f = FLAC(file_path)
+            return f.info.length > 3
+        elif ext == ".mp3":
+            from mutagen.mp3 import MP3
+            m = MP3(file_path)
+            return m.info.length > 3
+        elif ext == ".m4a":
+            m = MP4(file_path)
+            return m.info.length > 3
+        return True
+    except Exception:
+        return False
+
 def download_bilibili_audio_direct(bvid: str, output_path: str, progress_hook=None, cid: Optional[int] = None) -> bool:
     """
     直连 B站 官方高保真 CDN 下载音频，支持按 cid 定位多P分集与官方播单
@@ -42,15 +70,18 @@ def download_bilibili_audio_direct(bvid: str, output_path: str, progress_hook=No
                 return False
             cid = v_resp["data"]["cid"]
         
+        # fnval=16 请求 Dash 高清音频流，支持最高码率无损源
         p_url = f"https://api.bilibili.com/x/player/playurl?bvid={bvid}&cid={cid}&fnval=16&fnver=0&fourk=1"
         p_resp = requests.get(p_url, headers=HEADERS, timeout=8).json()
         audios = p_resp.get("data", {}).get("dash", {}).get("audio", [])
         if not audios:
             return False
             
+        # 选择最高带宽/最高码率音频
         best_audio = sorted(audios, key=lambda x: x.get("bandwidth", 0), reverse=True)[0]
         cand_urls = [best_audio.get("baseUrl")] + (best_audio.get("backupUrl") or [])
         
+        # 优先选用官方镜像 CDN (*.bilivideo.com)，彻底避免 mcdn.bilivideo.cn
         chosen_url = None
         for u in cand_urls:
             if u and "bilivideo.com" in u and "mcdn" not in u:
@@ -142,9 +173,29 @@ def download_cover(cover_url: str, output_path: str) -> bool:
         print(f"下载封面失败: {e}")
     return False
 
-def tag_audio_file(file_path: str, title: str, artist: str, album: str, cover_path: str = None, fmt: str = "mp3"):
+def tag_audio_file(file_path: str, title: str, artist: str, album: str, cover_path: str = None, fmt: str = "flac"):
+    """
+    为音频写入规范的元数据（FLAC / ID3 / MP4 Tag）
+    规范：歌曲名、歌手、专辑名、封面，严格不包含歌词
+    """
     try:
-        if fmt == "mp3":
+        if fmt == "flac":
+            audio = FLAC(file_path)
+            audio["title"] = title
+            audio["artist"] = artist
+            audio["album"] = album
+            
+            if cover_path and os.path.exists(cover_path):
+                pic = Picture()
+                with open(cover_path, "rb") as f:
+                    pic.data = f.read()
+                pic.type = 3
+                pic.mime = "image/jpeg" if cover_path.endswith((".jpg", ".jpeg")) else "image/png"
+                audio.clear_pictures()
+                audio.add_picture(pic)
+            audio.save()
+            
+        elif fmt == "mp3":
             try:
                 audio = ID3(file_path)
             except ID3NoHeaderError:
@@ -167,22 +218,6 @@ def tag_audio_file(file_path: str, title: str, artist: str, album: str, cover_pa
                 ))
             audio.save(file_path)
             
-        elif fmt == "flac":
-            audio = FLAC(file_path)
-            audio["title"] = title
-            audio["artist"] = artist
-            audio["album"] = album
-            
-            if cover_path and os.path.exists(cover_path):
-                pic = Picture()
-                with open(cover_path, "rb") as f:
-                    pic.data = f.read()
-                pic.type = 3
-                pic.mime = "image/jpeg" if cover_path.endswith((".jpg", ".jpeg")) else "image/png"
-                audio.clear_pictures()
-                audio.add_picture(pic)
-            audio.save()
-            
         elif fmt == "m4a":
             audio = MP4(file_path)
             audio["\xa9nam"] = [title]
@@ -204,7 +239,7 @@ def cut_and_export_tracks(
     album_name: str,
     cover_path: str,
     output_dir: str,
-    export_format: str = "mp3",
+    export_format: str = "flac",
     status_callback = None,
     bvid: str = "",
     cover_url: str = "",
@@ -212,9 +247,10 @@ def cut_and_export_tracks(
     use_fade: bool = ENABLE_FADE
 ) -> list:
     """
-    全形态合集处理引擎：
-    - 多P分集 / 官方播单合集：按 cid/bvid 独立拉取每集原声并优化
-    - 单视频串烧合集：从单音频中按时间戳精准切分
+    工业级全形态合集处理引擎：
+    1. 智能断点续提与去重校验：已提取完整曲目自动跳过，残缺/损坏文件自动覆盖重新提取
+    2. 平滑进度算法：从 0% 起步，随处理进度线性推进
+    3. 音质优化：支持 FLAC 最高无损品质，集成 EBU R128 工业级响度标准化 + 首尾 0.3s 平滑淡出
     """
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(MUSIC_DIR, exist_ok=True)
@@ -231,20 +267,62 @@ def cut_and_export_tracks(
         filename = f"{artist} - {title}.{export_format}"
         filename = "".join(c for c in filename if c not in r'\/:*?"<>|').strip()
         output_path = os.path.join(output_dir, filename)
+        final_dest_path = str(MUSIC_DIR / filename)
 
+        # 进度平滑计算：从第 1 首开始线性推进至 100%
+        current_progress = int(((i) / total_tracks) * 100)
+        track_bvid = track.get("bvid") or bvid
+        dur_str = track.get("duration_str", "")
+
+        # --- 智能查重与文件完整性校验 ---
+        if is_audio_file_valid(final_dest_path):
+            if status_callback:
+                status_callback(
+                    current=i + 1,
+                    total=total_tracks,
+                    track_name=f"{artist} - {title} (已完整存在，跳过)",
+                    progress=current_progress
+                )
+            # 同步复用至本次任务目录
+            if not os.path.exists(output_path):
+                shutil.copy2(final_dest_path, output_path)
+            
+            # 确保数据库记录存在
+            add_song_record(
+                bvid=track_bvid,
+                artist=artist,
+                title=title,
+                album=album_name,
+                filename=filename,
+                file_path=final_dest_path,
+                file_size=os.path.getsize(final_dest_path),
+                duration_str=dur_str,
+                fmt=export_format,
+                cover_url=track.get("cover_url") or cover_url
+            )
+
+            generated_files.append({
+                "filename": filename,
+                "path": output_path,
+                "artist": artist,
+                "title": title,
+                "size": os.path.getsize(final_dest_path)
+            })
+            continue
+
+        # 未完成或已损坏：开始提取/切分
         if status_callback:
             status_callback(
                 current=i + 1,
                 total=total_tracks,
                 track_name=f"{artist} - {title}",
-                progress=int(((i + 1) / total_tracks) * 100)
+                progress=current_progress
             )
 
         track_cid = track.get("cid")
-        track_bvid = track.get("bvid") or bvid
         is_independent_audio = bool(track_cid and (track.get("page", 0) > 1 or track.get("bvid")))
 
-        # 判断是否为多P或官方播单（独立流直接抓取）
+        # 多P或官方播单：独立音频直接拉取
         if is_independent_audio:
             track_raw_file = os.path.join(TEMP_DIR, f"part_{track_bvid}_{track_cid}.m4a")
             if not os.path.exists(track_raw_file):
@@ -269,17 +347,18 @@ def cut_and_export_tracks(
         if audio_filters:
             cmd.extend(["-af", ",".join(audio_filters)])
         
-        if export_format == "mp3":
+        # 编码格式选择：默认 FLAC 无损品质
+        if export_format == "flac":
+            cmd.extend(["-c:a", "flac", "-compression_level", "5"])
+        elif export_format == "mp3":
             cmd.extend(["-c:a", "libmp3lame", "-b:a", "320k"])
-        elif export_format == "flac":
-            cmd.extend(["-c:a", "flac"])
         elif export_format == "m4a":
             cmd.extend(["-c:a", "aac", "-b:a", "256k"])
         else:
             if not audio_filters:
                 cmd.extend(["-c", "copy"])
             else:
-                cmd.extend(["-c:a", "aac", "-b:a", "256k"])
+                cmd.extend(["-c:a", "flac"])
             
         cmd.append(output_path)
 
@@ -288,6 +367,7 @@ def cut_and_export_tracks(
             print(f"FFmpeg 导出错误 [{filename}]: {proc.stderr.decode('utf-8', errors='ignore')}")
             continue
 
+        # 写入元数据
         tag_audio_file(
             file_path=output_path,
             title=title,
@@ -299,8 +379,7 @@ def cut_and_export_tracks(
 
         file_size = os.path.getsize(output_path) if os.path.exists(output_path) else 0
 
-        # 持久化至 MUSIC_DIR
-        final_dest_path = str(MUSIC_DIR / filename)
+        # 持久化至 MUSIC_DIR (直接覆盖旧文件/损坏文件)
         try:
             shutil.copy2(output_path, final_dest_path)
         except Exception as e:
@@ -308,7 +387,6 @@ def cut_and_export_tracks(
 
         # 写入 SQLite
         try:
-            dur_str = track.get("duration_str", "")
             add_song_record(
                 bvid=track_bvid,
                 artist=artist,

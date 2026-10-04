@@ -1,5 +1,6 @@
 import os
 import uuid
+import json
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 from pydantic import BaseModel
@@ -27,14 +28,19 @@ from audio_engine import (
     cut_and_export_tracks,
     create_zip_archive
 )
-from db import get_history_songs, delete_song_record
-
-app = FastAPI(
-    title="BiliSplit - Linux LXC Edition",
-    description="哔哩哔哩音乐合集智能切分与规范归档服务 (Linux/LXC 服务端版)"
+from db import (
+    get_history_songs,
+    delete_song_record,
+    save_or_update_task,
+    get_task_by_id,
+    get_recent_tasks
 )
 
-# 启用 CORS 允许跨域
+app = FastAPI(
+    title="BiliSplit - Workstation Edition",
+    description="哔哩哔哩音乐提取与自动化归档工作站"
+)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -43,7 +49,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 内存任务字典
 tasks: Dict[str, Dict[str, Any]] = {}
 
 class ParseRequest(BaseModel):
@@ -63,37 +68,42 @@ class TrackItem(BaseModel):
     start_str: Optional[str] = ""
     end_str: Optional[str] = ""
     duration_str: Optional[str] = ""
+    bvid: Optional[str] = ""
+    cid: Optional[int] = None
+    page: Optional[int] = 1
+    cover_url: Optional[str] = ""
     is_ai: Optional[bool] = False
 
 class ProcessRequest(BaseModel):
     bvid: str
     album: str
     cover_url: str
-    format: str = "mp3"
+    format: str = "flac"  # 默认最高音质 FLAC
     tracks: List[TrackItem]
     use_loudnorm: Optional[bool] = ENABLE_LOUDNORM
     use_fade: Optional[bool] = ENABLE_FADE
 
 @app.get("/api/config")
 async def api_get_config():
-    """获取当前 Linux 服务端运行配置"""
+    """获取当前服务配置与运行状态"""
     return {
         "music_dir": str(MUSIC_DIR),
         "enable_loudnorm": ENABLE_LOUDNORM,
         "enable_fade": ENABLE_FADE,
+        "default_format": "flac",
         "platform": os.name
     }
 
 @app.get("/api/cover-proxy")
 async def cover_proxy(url: str):
-    """代理获取 B站封面图片，彻底解决外部访问与跨域 Referer 403 问题"""
+    """代理获取 B站封面图片，彻底解决防盗链 403 问题"""
     if not url:
         raise HTTPException(status_code=400, detail="缺少 url 参数")
     if url.startswith("//"):
         url = "https:" + url
     try:
         headers = {
-            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Referer": "https://www.bilibili.com/"
         }
         resp = requests.get(url, headers=headers, timeout=10)
@@ -104,7 +114,7 @@ async def cover_proxy(url: str):
 
 @app.post("/api/ai-normalize")
 async def api_ai_normalize(req: AiNormalizeRequest):
-    """针对格式不明确的歌曲名称，调用 AI 大模型进行精准规范"""
+    """按需调用 AI 大模型精修歌名"""
     res = ai_normalize_song(req.title, uploader=req.uploader, context_desc=req.desc)
     if res:
         return {"artist": res["artist"], "title": res["title"], "is_ai": True}
@@ -130,47 +140,54 @@ def background_split_task(task_id: str, req_data: ProcessRequest):
         bvid = req_data.bvid
         album = req_data.album.strip() or f"Bilibili_{bvid}"
         fmt = req_data.format.lower()
-        if fmt not in ["mp3", "flac", "m4a"]:
-            fmt = "mp3"
+        if fmt not in ["flac", "mp3", "m4a"]:
+            fmt = "flac"
             
-        task["status"] = "downloading"
-        task["step"] = "正在直连 B站官方高带宽 CDN 提取原声..."
-        task["progress"] = 10
+        total_tracks = len(req_data.tracks)
+        tracks_dump = [t.model_dump() for t in req_data.tracks]
 
-        # 1. 下载封面
+        task["status"] = "processing"
+        task["step"] = "正在准备音频流与封面..."
+        task["progress"] = 1
+
+        # 持久化至数据库 (刷新不丢)
+        save_or_update_task(
+            task_id=task_id, bvid=bvid, title=req_data.album, album=album,
+            cover_url=req_data.cover_url, fmt=fmt, status="processing",
+            progress=1, step=task["step"], total_tracks=total_tracks,
+            processed_tracks=0, tracks_json=json.dumps(tracks_dump)
+        )
+
         cover_path = os.path.join(TEMP_DIR, f"{task_id}_cover.jpg")
         has_cover = download_cover(req_data.cover_url, cover_path)
         if not has_cover:
             cover_path = None
 
-        # 2. 下载音频源流
-        def dl_progress(d):
-            if d.get('status') == 'downloading':
-                p = d.get('_percent_str', '0%').replace('%', '').strip()
-                try:
-                    p_val = float(p)
-                    task["progress"] = 10 + int(p_val * 0.4)
-                except Exception:
-                    pass
+        # 检查是否为单视频长音频串烧（需要先下载整段音频流）
+        is_single_stream = not any(t.get("cid") and (t.get("page", 0) > 1 or t.get("bvid")) for t in tracks_dump)
+        source_audio = ""
+        if is_single_stream:
+            task["step"] = "正在下载原声长音频流..."
+            source_audio = download_audio_source(bvid, f"{task_id}_source")
 
-        source_audio = download_audio_source(bvid, f"{task_id}_source", progress_hook=dl_progress)
-        task["step"] = "原音频就绪，开始执行智能切分与音频优化..."
-        task["progress"] = 50
-
-        # 3. 切分、音频过滤与标签注入
         task_out_dir = os.path.join(DOWNLOADS_DIR, task_id)
         os.makedirs(task_out_dir, exist_ok=True)
 
-        tracks_dict = [t.model_dump() for t in req_data.tracks]
-
         def on_track_status(current, total, track_name, progress):
             task["status"] = "processing"
-            task["step"] = f"正在优化处理 [{current}/{total}]: {track_name}"
-            task["progress"] = 50 + int((current / total) * 45)
+            task["step"] = f"正在处理 [{current}/{total}]: {track_name}"
+            task["progress"] = progress
+            save_or_update_task(
+                task_id=task_id, bvid=bvid, title=req_data.album, album=album,
+                cover_url=req_data.cover_url, fmt=fmt, status="processing",
+                progress=progress, step=task["step"], total_tracks=total,
+                processed_tracks=current
+            )
 
+        # 执行切分与智能断点去重
         files = cut_and_export_tracks(
             source_audio=source_audio,
-            tracks=tracks_dict,
+            tracks=tracks_dump,
             album_name=album,
             cover_path=cover_path,
             output_dir=task_out_dir,
@@ -182,14 +199,14 @@ def background_split_task(task_id: str, req_data: ProcessRequest):
             use_fade=req_data.use_fade
         )
 
-        # 4. 打包为 ZIP 归档
+        # 压缩包打包
         safe_album = "".join(c for c in album if c not in r'\/:*?"<>|').strip() or "Bilibili_Album"
         zip_filename = f"{safe_album}.zip"
         zip_path = os.path.join(task_out_dir, zip_filename)
         create_zip_archive(files, zip_path)
 
         task["status"] = "completed"
-        task["step"] = f"切分完成！歌曲已归档至服务器专属目录 ({MUSIC_DIR})"
+        task["step"] = f"归档完成，全部歌曲已写入 {MUSIC_DIR}"
         task["progress"] = 100
         task["files"] = [
             {
@@ -202,9 +219,21 @@ def background_split_task(task_id: str, req_data: ProcessRequest):
         ]
         task["zip_filename"] = zip_filename
 
+        save_or_update_task(
+            task_id=task_id, bvid=bvid, title=req_data.album, album=album,
+            cover_url=req_data.cover_url, fmt=fmt, status="completed",
+            progress=100, step=task["step"], total_tracks=total_tracks,
+            processed_tracks=total_tracks, files_json=json.dumps(task["files"])
+        )
+
     except Exception as e:
         task["status"] = "error"
         task["step"] = f"处理失败: {str(e)}"
+        save_or_update_task(
+            task_id=task_id, bvid=req_data.bvid, title=req_data.album, album=req_data.album,
+            cover_url=req_data.cover_url, fmt=req_data.format, status="error",
+            progress=task.get("progress", 0), step=task["step"]
+        )
         print(f"任务异常 [{task_id}]: {e}")
 
 @app.post("/api/process")
@@ -221,59 +250,132 @@ async def api_process(req: ProcessRequest, background_tasks: BackgroundTasks):
         "zip_filename": None
     }
     
+    save_or_update_task(
+        task_id=task_id, bvid=req.bvid, title=req.album, album=req.album,
+        cover_url=req.cover_url, fmt=req.format, status="pending",
+        progress=0, step="已加入处理队列...", total_tracks=len(req.tracks),
+        processed_tracks=0, tracks_json=json.dumps([t.model_dump() for t in req.tracks])
+    )
+    
     background_tasks.add_task(background_split_task, task_id, req)
     return {"task_id": task_id}
 
 @app.get("/api/task/{task_id}")
 async def api_task_status(task_id: str):
-    if task_id not in tasks:
-        raise HTTPException(status_code=404, detail="未找到该任务")
-    return tasks[task_id]
+    # 优先查内存
+    if task_id in tasks:
+        return tasks[task_id]
+    # 查 SQLite 数据库以支持刷新后恢复
+    db_task = get_task_by_id(task_id)
+    if db_task:
+        return {
+            "status": db_task["status"],
+            "step": db_task["step"],
+            "progress": db_task["progress"],
+            "files": db_task.get("files", []),
+            "zip_filename": f"{db_task['album']}.zip"
+        }
+    raise HTTPException(status_code=404, detail="未找到该任务")
+
+# 任务队列历史与断点续提 API
+@app.get("/api/tasks/recent")
+async def api_get_recent_tasks():
+    """获取所有历史与活动任务列表"""
+    recent = get_recent_tasks(limit=30)
+    return {"tasks": recent}
+
+@app.post("/api/tasks/retry/{task_id}")
+async def api_retry_task(task_id: str, background_tasks: BackgroundTasks):
+    """智能重试/继续执行中断的任务 (利用完整性校验自动跳过已提取曲目)"""
+    db_task = get_task_by_id(task_id)
+    if not db_task:
+        raise HTTPException(status_code=404, detail="任务不存在")
+        
+    tracks = [TrackItem(**t) for t in db_task.get("tracks", [])]
+    if not tracks:
+        raise HTTPException(status_code=400, detail="该任务无有效曲目数据")
+        
+    req = ProcessRequest(
+        bvid=db_task["bvid"],
+        album=db_task["album"],
+        cover_url=db_task.get("cover_url", ""),
+        format=db_task.get("format", "flac"),
+        tracks=tracks
+    )
+    
+    tasks[task_id] = {
+        "status": "pending",
+        "step": "准备断点续提...",
+        "progress": 0,
+        "files": [],
+        "zip_filename": None
+    }
+    background_tasks.add_task(background_split_task, task_id, req)
+    return {"task_id": task_id, "status": "requeued"}
 
 @app.get("/api/download/{task_id}/zip")
 async def api_download_zip(task_id: str):
-    if task_id not in tasks or tasks[task_id]["status"] != "completed":
-        raise HTTPException(status_code=400, detail="任务尚未完成或不存在")
-    
-    zip_filename = tasks[task_id]["zip_filename"]
-    zip_path = os.path.join(DOWNLOADS_DIR, task_id, zip_filename)
-    if not os.path.exists(zip_path):
-        raise HTTPException(status_code=404, detail="压缩包文件未找到")
+    zip_path = None
+    if task_id in tasks and tasks[task_id].get("zip_filename"):
+        zip_path = os.path.join(DOWNLOADS_DIR, task_id, tasks[task_id]["zip_filename"])
+    else:
+        db_task = get_task_by_id(task_id)
+        if db_task:
+            zip_path = os.path.join(DOWNLOADS_DIR, task_id, f"{db_task['album']}.zip")
+            
+    if not zip_path or not os.path.exists(zip_path):
+        raise HTTPException(status_code=404, detail="压缩包未生成或已被清理")
         
-    return FileResponse(zip_path, filename=zip_filename, media_type="application/zip")
+    return FileResponse(zip_path, filename=os.path.basename(zip_path), media_type="application/zip")
 
 @app.get("/api/download/{task_id}/track/{filename}")
 async def api_download_track(task_id: str, filename: str):
     track_path = os.path.join(DOWNLOADS_DIR, task_id, filename)
     if not os.path.exists(track_path):
+        # 回退至 MUSIC_DIR
+        track_path = MUSIC_DIR / filename
+    if not os.path.exists(str(track_path)):
         raise HTTPException(status_code=404, detail="歌曲文件未找到")
         
-    return FileResponse(track_path, filename=filename)
+    return FileResponse(str(track_path), filename=filename)
 
 # 历史曲库持久化管理 API
 @app.get("/api/history")
-async def api_get_history(keyword: Optional[str] = Query(None), limit: int = 100):
-    """获取服务器上持久化归档的历史歌曲"""
+async def api_get_history(keyword: Optional[str] = Query(None), limit: int = 150):
     songs = get_history_songs(limit=limit, keyword=keyword)
     return {"songs": songs}
 
 @app.delete("/api/history/{song_id}")
 async def api_delete_history(song_id: int):
-    """从数据库中删除某条历史记录"""
-    success = delete_song_record(song_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="未找到该记录")
+    file_path = delete_song_record(song_id)
+    # 彻底从磁盘删除文件，避免孤立残留
+    if file_path and os.path.exists(file_path):
+        try:
+            os.remove(file_path)
+        except Exception:
+            pass
     return {"status": "ok"}
 
 @app.get("/api/stream-song/{filename}")
 async def api_stream_song(filename: str):
-    """直接流式播放/下载服务器 MUSIC_DIR 中的歌曲"""
-    file_path = MUSIC_DIR / filename
+    """直接流式播放/下载服务器 MUSIC_DIR 中的歌曲 (带安全路径处理)"""
+    # 彻底规范解码
+    safe_filename = "".join(c for c in filename if c not in r'\/:*?"<>|').strip()
+    file_path = MUSIC_DIR / safe_filename
     if not file_path.exists():
-        raise HTTPException(status_code=404, detail="歌曲文件在服务器曲库中不存在")
-    return FileResponse(str(file_path), filename=filename)
+        # 尝试遍历查找匹配名称
+        found = None
+        for p in MUSIC_DIR.iterdir():
+            if p.name == filename or p.name == safe_filename:
+                found = p
+                break
+        if found:
+            file_path = found
+        else:
+            raise HTTPException(status_code=404, detail=f"曲目文件未找到: {filename}")
+            
+    return FileResponse(str(file_path), filename=file_path.name)
 
-# 静态资源挂载
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 

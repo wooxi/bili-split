@@ -1,21 +1,38 @@
+// ==============================================================
+// BiliSplit - 前端主控制逻辑 (系统级工作站架构)
+// ==============================================================
+
 // 全局应用状态
 let currentVideo = null;
 let currentTaskId = null;
 let pollTimer = null;
+let currentPlaylist = [];
+let currentTrackIndex = -1;
 let libraryData = [];
 
-// DOM 元素引用 - 视图切换
-const viewWorkstationBtn = document.getElementById('viewWorkstationBtn');
-const viewLibraryBtn = document.getElementById('viewLibraryBtn');
-const workstationView = document.getElementById('workstationView');
-const libraryView = document.getElementById('libraryView');
-const libraryCountTag = document.getElementById('libraryCountTag');
-const headerPathBadge = document.getElementById('headerPathBadge');
+// DOM 引用 - 导航与视图
+const navWorkstation = document.getElementById('navWorkstation');
+const navTasks = document.getElementById('navTasks');
+const navLibrary = document.getElementById('navLibrary');
+const navSettings = document.getElementById('navSettings');
+const navActiveTaskBadge = document.getElementById('navActiveTaskBadge');
+const navLibraryCountBadge = document.getElementById('navLibraryCountBadge');
 
-// DOM 元素引用 - 工作台
+const viewWorkstation = document.getElementById('viewWorkstation');
+const viewTasks = document.getElementById('viewTasks');
+const viewLibrary = document.getElementById('viewLibrary');
+const viewSettings = document.getElementById('viewSettings');
+const viewTitle = document.getElementById('viewTitle');
+
+const quickTaskIndicator = document.getElementById('quickTaskIndicator');
+const quickTaskText = document.getElementById('quickTaskText');
+const sidebarMusicPath = document.getElementById('sidebarMusicPath');
+const sidebarPlatformText = document.getElementById('sidebarPlatformText');
+
+// DOM 引用 - 工作台
 const urlInput = document.getElementById('urlInput');
 const parseBtn = document.getElementById('parseBtn');
-const emptyState = document.getElementById('emptyState');
+const workstationEmpty = document.getElementById('workstationEmpty');
 const editorPanel = document.getElementById('editorPanel');
 
 const videoCover = document.getElementById('videoCover');
@@ -34,7 +51,6 @@ const aiNormalizeAllBtn = document.getElementById('aiNormalizeAllBtn');
 const swapAllBtn = document.getElementById('swapAllBtn');
 const addTrackBtn = document.getElementById('addTrackBtn');
 const startProcessBtn = document.getElementById('startProcessBtn');
-const taskStatusText = document.getElementById('taskStatusText');
 
 const progressBox = document.getElementById('progressBox');
 const progressStep = document.getElementById('progressStep');
@@ -45,12 +61,19 @@ const completedBox = document.getElementById('completedBox');
 const downloadZipBtn = document.getElementById('downloadZipBtn');
 const outputFileList = document.getElementById('outputFileList');
 
-// DOM 元素引用 - 媒体库
+// DOM 引用 - 任务队列
+const tasksTableBody = document.getElementById('tasksTableBody');
+const refreshTasksBtn = document.getElementById('refreshTasksBtn');
+
+// DOM 引用 - 媒体库
 const librarySearchInput = document.getElementById('librarySearchInput');
 const libraryStats = document.getElementById('libraryStats');
 const libraryTableBody = document.getElementById('libraryTableBody');
 
-// DOM 元素引用 - 全局底部音频播放器
+// DOM 引用 - 系统配置
+const cfgMusicDir = document.getElementById('cfgMusicDir');
+
+// DOM 引用 - 全局常驻播放器
 const globalAudio = document.getElementById('globalAudio');
 const playerCoverImg = document.getElementById('playerCoverImg');
 const playerCoverPlaceholder = document.getElementById('playerCoverPlaceholder');
@@ -65,10 +88,6 @@ const playerSeeker = document.getElementById('playerSeeker');
 const playerVolume = document.getElementById('playerVolume');
 const playerDownloadBtn = document.getElementById('playerDownloadBtn');
 
-// 当前活动播放列表与索引
-let currentPlaylist = [];
-let currentTrackIndex = -1;
-
 // -------------------------------------------------------------
 // 1. 初始化与配置加载
 // -------------------------------------------------------------
@@ -76,39 +95,60 @@ async function init() {
     try {
         const resp = await fetch('/api/config');
         const cfg = await resp.json();
-        if (headerPathBadge) headerPathBadge.innerText = cfg.music_dir;
+        if (sidebarMusicPath) sidebarMusicPath.innerText = cfg.music_dir;
+        if (cfgMusicDir) cfgMusicDir.innerText = cfg.music_dir;
+        if (sidebarPlatformText) sidebarPlatformText.innerText = cfg.platform === 'posix' ? 'Linux 容器' : 'Windows';
         if (loudnormToggle) loudnormToggle.checked = cfg.enable_loudnorm;
         if (fadeToggle) fadeToggle.checked = cfg.enable_fade;
+        if (formatSelect) formatSelect.value = cfg.default_format || 'flac';
     } catch (e) {
-        console.error('初始化配置失败:', e);
+        console.error('加载系统配置异常:', e);
     }
+
+    // 加载曲库与恢复进行中的任务
     loadLibrary();
+    checkActiveTasksOnLoad();
 }
 
 // -------------------------------------------------------------
-// 2. 视图切换逻辑
+// 2. 视图切换逻辑 (Sidebar Navigation)
 // -------------------------------------------------------------
-function switchView(viewName) {
-    if (viewName === 'workstation') {
-        workstationView.classList.remove('hidden');
-        libraryView.classList.add('hidden');
-        viewWorkstationBtn.className = 'px-3 py-1 rounded-md bg-surface-active text-white font-medium transition cursor-pointer flex items-center gap-1.5';
-        viewLibraryBtn.className = 'px-3 py-1 rounded-md text-slate-400 hover:text-slate-200 transition cursor-pointer flex items-center gap-1.5';
-    } else {
-        workstationView.classList.add('hidden');
-        libraryView.classList.remove('hidden');
-        viewLibraryBtn.className = 'px-3 py-1 rounded-md bg-surface-active text-white font-medium transition cursor-pointer flex items-center gap-1.5';
-        viewWorkstationBtn.className = 'px-3 py-1 rounded-md text-slate-400 hover:text-slate-200 transition cursor-pointer flex items-center gap-1.5';
-        loadLibrary(librarySearchInput ? librarySearchInput.value.trim() : '');
-    }
+const views = {
+    workstation: { el: viewWorkstation, btn: navWorkstation, title: '音频提取工作台' },
+    tasks: { el: viewTasks, btn: navTasks, title: '任务执行历史与断点队列' },
+    library: { el: viewLibrary, btn: navLibrary, title: '持久化媒体曲库 (/music)' },
+    settings: { el: viewSettings, btn: navSettings, title: '系统环境与持久化参数' }
+};
+
+function switchView(target) {
+    Object.keys(views).forEach(key => {
+        const v = views[key];
+        if (key === target) {
+            v.el.classList.remove('hidden');
+            v.btn.className = 'w-full flex items-center gap-2.5 px-3 py-2 rounded-lg bg-surface-active text-white transition cursor-pointer';
+            viewTitle.innerText = v.title;
+        } else {
+            v.el.classList.add('hidden');
+            v.btn.className = 'w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-surface-hover transition cursor-pointer';
+        }
+    });
+
+    if (target === 'library') loadLibrary(librarySearchInput ? librarySearchInput.value.trim() : '');
+    if (target === 'tasks') loadTasksHistory();
     lucide.createIcons();
 }
 
-viewWorkstationBtn.addEventListener('click', () => switchView('workstation'));
-viewLibraryBtn.addEventListener('click', () => switchView('library'));
+navWorkstation.addEventListener('click', () => switchView('workstation'));
+navTasks.addEventListener('click', () => switchView('tasks'));
+navLibrary.addEventListener('click', () => switchView('library'));
+navSettings.addEventListener('click', () => switchView('settings'));
+
+if (quickTaskIndicator) {
+    quickTaskIndicator.addEventListener('click', () => switchView('tasks'));
+}
 
 // -------------------------------------------------------------
-// 3. 辅助转换函数
+// 3. 时间格式化辅助
 // -------------------------------------------------------------
 function strToSec(str) {
     if (!str) return 0;
@@ -130,14 +170,14 @@ function secToStr(sec) {
 }
 
 // -------------------------------------------------------------
-// 4. 工作台：解析视频
+// 4. 工作台：解析 B 站链接
 // -------------------------------------------------------------
 parseBtn.addEventListener('click', async () => {
     const url = urlInput.value.trim();
     if (!url) return;
 
     parseBtn.disabled = true;
-    parseBtn.innerHTML = `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i><span>解析中</span>`;
+    parseBtn.innerHTML = `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i><span>读取中...</span>`;
     lucide.createIcons();
 
     try {
@@ -154,7 +194,7 @@ parseBtn.addEventListener('click', async () => {
         renderVideoHeader(data);
         renderTrackTable(data.tracks);
 
-        emptyState.classList.add('hidden');
+        workstationEmpty.classList.add('hidden');
         editorPanel.classList.remove('hidden');
         completedBox.classList.add('hidden');
         progressBox.classList.add('hidden');
@@ -163,7 +203,7 @@ parseBtn.addEventListener('click', async () => {
         alert(e.message);
     } finally {
         parseBtn.disabled = false;
-        parseBtn.innerHTML = `<i data-lucide="sparkles" class="w-3.5 h-3.5"></i><span>解析</span>`;
+        parseBtn.innerHTML = `<i data-lucide="sparkles" class="w-3.5 h-3.5"></i><span>解析提取</span>`;
         lucide.createIcons();
     }
 });
@@ -250,7 +290,7 @@ function renderTrackTable(tracks) {
         startInput.addEventListener('blur', syncTimes);
         endInput.addEventListener('blur', syncTimes);
 
-        // 单曲 AI 校对
+        // 单曲 AI 规范
         tr.querySelector('.ai-single-btn').addEventListener('click', async (e) => {
             const btn = e.currentTarget;
             btn.innerHTML = `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i>`;
@@ -280,7 +320,7 @@ function renderTrackTable(tracks) {
             }
         });
 
-        // 单曲互换
+        // 互换
         tr.querySelector('.swap-single-btn').addEventListener('click', () => {
             const t = track.artist;
             track.artist = track.title;
@@ -289,7 +329,7 @@ function renderTrackTable(tracks) {
             titleInput.value = track.title;
         });
 
-        // 单曲删除
+        // 删除
         tr.querySelector('.del-single-btn').addEventListener('click', () => {
             currentVideo.tracks.splice(idx, 1);
             renderTrackTable(currentVideo.tracks);
@@ -331,7 +371,7 @@ aiNormalizeAllBtn.addEventListener('click', async () => {
         alert('批量处理失败');
     } finally {
         aiNormalizeAllBtn.disabled = false;
-        aiNormalizeAllBtn.innerHTML = `<i data-lucide="sparkles" class="w-3 h-3 text-purple-400"></i><span>AI 规范</span>`;
+        aiNormalizeAllBtn.innerHTML = `<i data-lucide="sparkles" class="w-3 h-3 text-purple-400"></i><span>AI 规范歌名</span>`;
         lucide.createIcons();
     }
 });
@@ -373,7 +413,6 @@ startProcessBtn.addEventListener('click', async () => {
     startProcessBtn.disabled = true;
     progressBox.classList.remove('hidden');
     completedBox.classList.add('hidden');
-    taskStatusText.innerText = '正在提交任务...';
 
     try {
         const payload = {
@@ -396,46 +435,80 @@ startProcessBtn.addEventListener('click', async () => {
         if (!resp.ok) throw new Error(resData.detail || '提交失败');
 
         currentTaskId = resData.task_id;
-        pollTaskProgress(currentTaskId);
+        startTaskPolling(currentTaskId);
 
     } catch (err) {
         alert(err.message);
         startProcessBtn.disabled = false;
         progressBox.classList.add('hidden');
-        taskStatusText.innerText = '就绪';
     }
 });
 
-function pollTaskProgress(taskId) {
+// -------------------------------------------------------------
+// 5. 任务轮询与断点续提机制 (刷新页面不丢失)
+// -------------------------------------------------------------
+function startTaskPolling(taskId) {
     if (pollTimer) clearInterval(pollTimer);
+    
+    // 显示全局状态灯
+    quickTaskIndicator.classList.remove('hidden');
+    navActiveTaskBadge.classList.remove('hidden');
 
     pollTimer = setInterval(async () => {
         try {
             const resp = await fetch(`/api/task/${taskId}`);
+            if (!resp.ok) {
+                stopTaskPolling();
+                return;
+            }
             const data = await resp.json();
 
+            // 平滑进度与实时指示
             progressBar.style.width = `${data.progress}%`;
             progressPct.innerText = `${data.progress}%`;
             progressStep.innerText = data.step || '处理中...';
-            taskStatusText.innerText = data.step || '处理中...';
+            quickTaskText.innerText = `${data.progress}% ${data.step ? data.step.substring(0, 15) : ''}`;
 
             if (data.status === 'completed') {
-                clearInterval(pollTimer);
+                stopTaskPolling();
                 startProcessBtn.disabled = false;
                 progressBox.classList.add('hidden');
-                taskStatusText.innerText = '归档完成';
                 showCompleted(taskId, data);
                 loadLibrary();
+                loadTasksHistory();
             } else if (data.status === 'error') {
-                clearInterval(pollTimer);
+                stopTaskPolling();
                 startProcessBtn.disabled = false;
-                taskStatusText.innerText = '出错';
+                progressStep.innerText = '出错';
                 alert(data.step);
+                loadTasksHistory();
             }
         } catch (e) {
             console.error('进度轮询异常:', e);
         }
-    }, 1000);
+    }, 1200);
+}
+
+function stopTaskPolling() {
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = null;
+    quickTaskIndicator.classList.add('hidden');
+    navActiveTaskBadge.classList.add('hidden');
+}
+
+// 页面载入时自动检测是否有正在执行的后台任务
+async function checkActiveTasksOnLoad() {
+    try {
+        const resp = await fetch('/api/tasks/recent');
+        const data = await resp.json();
+        const tasks = data.tasks || [];
+        const running = tasks.find(t => t.status === 'processing' || t.status === 'pending');
+        if (running) {
+            startTaskPolling(running.id);
+        }
+    } catch (e) {
+        console.error('检测后台运行任务失败:', e);
+    }
 }
 
 function showCompleted(taskId, data) {
@@ -457,7 +530,7 @@ function showCompleted(taskId, data) {
 
         item.innerHTML = `
             <div class="flex items-center gap-2.5 truncate">
-                <button class="play-item-btn w-6 h-6 rounded-md bg-surface-card hover:bg-surface-active flex items-center justify-center text-slate-300 hover:text-emerald-400 transition cursor-pointer flex-shrink-0">
+                <button class="play-item-btn w-6 h-6 rounded-md bg-surface-card hover:bg-surface-active flex items-center justify-center text-slate-300 hover:text-brand transition cursor-pointer flex-shrink-0">
                     <i data-lucide="play" class="w-3 h-3 fill-current ml-0.5"></i>
                 </button>
                 <div class="truncate">
@@ -467,7 +540,7 @@ function showCompleted(taskId, data) {
             </div>
 
             <div class="flex items-center gap-1.5 flex-shrink-0">
-                <a href="${streamUrl}" download="${f.filename}" class="p-1 hover:text-emerald-400 text-slate-400 transition" title="下载单曲">
+                <a href="${streamUrl}" download="${f.filename}" class="p-1 hover:text-brand text-slate-400 transition" title="下载单曲">
                     <i data-lucide="download" class="w-3.5 h-3.5"></i>
                 </a>
             </div>
@@ -484,7 +557,103 @@ function showCompleted(taskId, data) {
 }
 
 // -------------------------------------------------------------
-// 5. 媒体库管理 (SQLite)
+// 6. 任务队列历史管理与智能重试 (Tasks Queue)
+// -------------------------------------------------------------
+refreshTasksBtn.addEventListener('click', () => loadTasksHistory());
+
+async function loadTasksHistory() {
+    try {
+        const resp = await fetch('/api/tasks/recent');
+        const data = await resp.json();
+        const tasks = data.tasks || [];
+
+        tasksTableBody.innerHTML = '';
+        if (tasks.length === 0) {
+            tasksTableBody.innerHTML = `
+                <tr>
+                    <td colspan="6" class="py-12 text-center text-slate-600 font-mono text-xs">
+                        暂无任务历史记录
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        tasks.forEach(t => {
+            const tr = document.createElement('tr');
+            tr.className = 'table-row-hover transition';
+
+            let statusBadge = '';
+            if (t.status === 'completed') {
+                statusBadge = '<span class="text-[10px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">已完成</span>';
+            } else if (t.status === 'processing') {
+                statusBadge = '<span class="text-[10px] px-2 py-0.5 rounded bg-brand/10 text-brand border border-brand/20 font-medium flex items-center justify-center gap-1"><i data-lucide="loader-2" class="w-3 h-3 animate-spin"></i>处理中</span>';
+            } else if (t.status === 'error') {
+                statusBadge = '<span class="text-[10px] px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 border border-rose-500/20 font-medium">异常中断</span>';
+            } else {
+                statusBadge = '<span class="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700 font-medium">等待中</span>';
+            }
+
+            const dateStr = (t.updated_at || t.created_at || '').substring(0, 16);
+
+            tr.innerHTML = `
+                <td class="py-2.5 px-3">
+                    <div class="font-medium text-white truncate max-w-sm">${t.title || t.album}</div>
+                    <div class="text-[10px] text-slate-500 font-mono">${t.bvid} · 共 ${t.total_tracks} 首歌</div>
+                </td>
+                <td class="py-2.5 px-3 text-center">${statusBadge}</td>
+                <td class="py-2.5 px-3 text-center">
+                    <div class="w-full flex items-center gap-2">
+                        <div class="flex-1 h-1 bg-surface-base rounded-full overflow-hidden">
+                            <div class="h-full bg-brand" style="width: ${t.progress || 0}%"></div>
+                        </div>
+                        <span class="text-[10px] font-mono text-slate-400 w-8">${t.progress || 0}%</span>
+                    </div>
+                </td>
+                <td class="py-2.5 px-3 text-center font-mono uppercase text-[10px] text-slate-400">${t.format || 'flac'}</td>
+                <td class="py-2.5 px-3 text-center font-mono text-slate-500 text-[10px]">${dateStr}</td>
+                <td class="py-2.5 px-3 text-right">
+                    <div class="flex items-center justify-end gap-1.5">
+                        ${t.status !== 'completed' ? `
+                            <button class="retry-task-btn px-2 py-1 bg-surface-hover hover:bg-surface-active rounded text-[11px] text-slate-300 hover:text-white transition flex items-center gap-1 cursor-pointer" data-id="${t.id}" title="断点续提 (自动跳过已完成歌曲)">
+                                <i data-lucide="play" class="w-3 h-3 fill-current"></i>
+                                <span>继续</span>
+                            </button>
+                        ` : `
+                            <a href="/api/download/${t.id}/zip" class="p-1 text-slate-500 hover:text-brand transition" title="下载 ZIP">
+                                <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                            </a>
+                        `}
+                    </div>
+                </td>
+            `;
+
+            const retryBtn = tr.querySelector('.retry-task-btn');
+            if (retryBtn) {
+                retryBtn.addEventListener('click', async (e) => {
+                    const id = e.currentTarget.dataset.id;
+                    try {
+                        await fetch(`/api/tasks/retry/${id}`, { method: 'POST' });
+                        startTaskPolling(id);
+                        loadTasksHistory();
+                    } catch (err) {
+                        alert('启动续提失败');
+                    }
+                });
+            }
+
+            tasksTableBody.appendChild(tr);
+        });
+
+        lucide.createIcons();
+
+    } catch (e) {
+        console.error('加载任务队列异常:', e);
+    }
+}
+
+// -------------------------------------------------------------
+// 7. 媒体曲库管理 (修复各单曲独立播放与删除)
 // -------------------------------------------------------------
 let libraryDebounce = null;
 if (librarySearchInput) {
@@ -503,7 +672,7 @@ async function loadLibrary(keyword = '') {
         const data = await resp.json();
         libraryData = data.songs || [];
 
-        if (libraryCountTag) libraryCountTag.innerText = libraryData.length;
+        if (navLibraryCountBadge) navLibraryCountBadge.innerText = libraryData.length;
         if (libraryStats) libraryStats.innerText = `${libraryData.length} 首曲目`;
 
         libraryTableBody.innerHTML = '';
@@ -536,7 +705,7 @@ async function loadLibrary(keyword = '') {
                 <td class="py-2 px-3 text-center font-mono text-slate-500 text-[11px]">${idx + 1}</td>
                 <td class="py-2 px-3">
                     <div class="flex items-center gap-2.5">
-                        <button class="play-lib-btn w-6 h-6 rounded bg-surface-base hover:bg-surface-active flex items-center justify-center text-slate-300 hover:text-emerald-400 transition cursor-pointer flex-shrink-0">
+                        <button class="play-lib-btn w-6 h-6 rounded bg-surface-base hover:bg-surface-active flex items-center justify-center text-slate-300 hover:text-brand transition cursor-pointer flex-shrink-0" title="播放此曲">
                             <i data-lucide="play" class="w-3 h-3 fill-current ml-0.5"></i>
                         </button>
                         <div class="truncate">
@@ -547,29 +716,32 @@ async function loadLibrary(keyword = '') {
                 </td>
                 <td class="py-2 px-3 text-slate-400 truncate text-[11px]">${song.album || '-'}</td>
                 <td class="py-2 px-3 text-center">
-                    <span class="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-surface-base border border-surface-border text-slate-400">
-                        ${song.format || 'mp3'}
+                    <span class="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-surface-base border border-surface-border text-slate-400 font-medium">
+                        ${song.format || 'flac'}
                     </span>
                 </td>
                 <td class="py-2 px-3 text-center font-mono text-slate-500 text-[11px]">${sizeMb} M</td>
                 <td class="py-2 px-3 text-center font-mono text-slate-500 text-[11px]">${dateStr}</td>
                 <td class="py-2 px-3 text-right">
                     <div class="flex items-center justify-end gap-1.5">
-                        <a href="${streamUrl}" download="${song.filename}" class="p-1 text-slate-500 hover:text-emerald-400 transition" title="下载文件">
+                        <a href="${streamUrl}" download="${song.filename}" class="p-1 text-slate-500 hover:text-brand transition" title="下载原文件">
                             <i data-lucide="download" class="w-3.5 h-3.5"></i>
                         </a>
-                        <button class="del-lib-btn p-1 text-slate-500 hover:text-rose-400 transition cursor-pointer" data-id="${song.id}" title="删除记录">
+                        <button class="del-lib-btn p-1 text-slate-500 hover:text-rose-400 transition cursor-pointer" data-id="${song.id}" title="从磁盘与曲库彻底删除">
                             <i data-lucide="trash" class="w-3.5 h-3.5"></i>
                         </button>
                     </div>
                 </td>
             `;
 
+            // 绑定各自专属独立播放
             tr.querySelector('.play-lib-btn').addEventListener('click', () => {
                 playTrackFromList(libPlaylist, idx);
             });
 
+            // 绑定删除 (包含磁盘文件清除)
             tr.querySelector('.del-lib-btn').addEventListener('click', async (e) => {
+                if (!confirm(`确认彻底删除歌曲 "${song.title}"？文件将从磁盘物理移除。`)) return;
                 const id = e.currentTarget.dataset.id;
                 try {
                     await fetch(`/api/history/${id}`, { method: 'DELETE' });
@@ -590,7 +762,7 @@ async function loadLibrary(keyword = '') {
 }
 
 // -------------------------------------------------------------
-// 6. 全局底部音频播放器控制 (支持列表联动、左右切歌、自动连播)
+// 8. 全局常驻播放器 (完美按键状态切换 + 左右切歌 + 自动连播)
 // -------------------------------------------------------------
 function playTrackFromList(list, index) {
     if (!list || list.length === 0 || index < 0 || index >= list.length) return;
@@ -615,7 +787,7 @@ function playTrack({ title, artist, src, cover }) {
     playerTitle.innerText = title || '未知曲目';
     playerArtist.innerText = artist || '-';
     playerDownloadBtn.href = src;
-    playerDownloadBtn.download = `${artist} - ${title}.mp3`;
+    playerDownloadBtn.download = `${artist} - ${title}.flac`;
 
     if (cover) {
         playerCoverImg.src = cover.startsWith('http') ? ('/api/cover-proxy?url=' + encodeURIComponent(cover)) : cover;
@@ -642,7 +814,7 @@ playerPlayBtn.addEventListener('click', () => {
 if (playerPrevBtn) playerPrevBtn.addEventListener('click', playPrevTrack);
 if (playerNextBtn) playerNextBtn.addEventListener('click', playNextTrack);
 
-// 播放按键状态精准切换 (三角 / 双竖线)
+// 播放按键状态精准切换 (三角 ▶ / 双竖线 ⏸)
 globalAudio.addEventListener('play', () => {
     playerPlayBtn.innerHTML = `<i data-lucide="pause" class="w-4 h-4 fill-current"></i>`;
     lucide.createIcons();
@@ -653,7 +825,7 @@ globalAudio.addEventListener('pause', () => {
     lucide.createIcons();
 });
 
-// 歌曲播放结束自动切换下一首
+// 单曲结束自动切下一首
 globalAudio.addEventListener('ended', playNextTrack);
 
 globalAudio.addEventListener('timeupdate', () => {
@@ -672,5 +844,5 @@ playerVolume.addEventListener('input', (e) => {
     globalAudio.volume = parseFloat(e.target.value);
 });
 
-// 运行初始化
+// 启动执行
 init();
