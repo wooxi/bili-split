@@ -257,6 +257,24 @@ def cut_and_export_tracks(
     generated_files = []
     total_tracks = len(tracks)
 
+    # 预先扫描已存在的完整曲目，提供即时断点恢复进度
+    already_valid_count = 0
+    for t in tracks:
+        a_name = t.get("artist", "群星").strip()
+        t_name = t.get("title", "track").strip()
+        f_name = "".join(c for c in f"{a_name} - {t_name}.{export_format}" if c not in r'\/:*?"<>|').strip()
+        if is_audio_file_valid(str(MUSIC_DIR / f_name)):
+            already_valid_count += 1
+
+    if already_valid_count > 0 and status_callback:
+        init_pct = int((already_valid_count / total_tracks) * 100)
+        status_callback(
+            current=already_valid_count,
+            total=total_tracks,
+            track_name=f"[已存在 {already_valid_count} 首完整曲目，智能秒级跳过]",
+            progress=init_pct
+        )
+
     for i, track in enumerate(tracks):
         artist = track.get("artist", "群星").strip()
         title = track.get("title", f"Track {i+1}").strip()
@@ -269,8 +287,8 @@ def cut_and_export_tracks(
         output_path = os.path.join(output_dir, filename)
         final_dest_path = str(MUSIC_DIR / filename)
 
-        # 进度平滑计算：从第 1 首开始线性推进至 100%
-        current_progress = int(((i) / total_tracks) * 100)
+        # 进度平滑推进 (完成第 i 首即计入进度)
+        current_progress = int(((i + 1) / total_tracks) * 100)
         track_bvid = track.get("bvid") or bvid
         dur_str = track.get("duration_str", "")
 
@@ -280,10 +298,9 @@ def cut_and_export_tracks(
                 status_callback(
                     current=i + 1,
                     total=total_tracks,
-                    track_name=f"{artist} - {title} (已完整存在，跳过)",
+                    track_name=f"{artist} - {title} (完整，跳过)",
                     progress=current_progress
                 )
-            # 同步复用至本次任务目录
             if not os.path.exists(output_path):
                 shutil.copy2(final_dest_path, output_path)
             

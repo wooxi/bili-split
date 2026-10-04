@@ -29,7 +29,7 @@ def init_db():
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_artist ON songs(artist)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_filename ON songs(filename)")
 
-        # 2. 任务持久化表 (刷新页面不丢任务，支持断点重试)
+        # 2. 任务持久化表
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS tasks (
                 id TEXT PRIMARY KEY,
@@ -37,6 +37,9 @@ def init_db():
                 title TEXT NOT NULL,
                 album TEXT NOT NULL,
                 cover_url TEXT DEFAULT '',
+                uploader TEXT DEFAULT '',
+                video_title TEXT DEFAULT '',
+                url TEXT DEFAULT '',
                 format TEXT DEFAULT 'flac',
                 status TEXT NOT NULL, -- 'pending', 'processing', 'completed', 'error'
                 progress INTEGER DEFAULT 0,
@@ -50,6 +53,17 @@ def init_db():
             )
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_task_status ON tasks(status)")
+        
+        # 兼容性字段升级
+        cursor.execute("PRAGMA table_info(tasks)")
+        columns = [row[1] for row in cursor.fetchall()]
+        if "uploader" not in columns:
+            cursor.execute("ALTER TABLE tasks ADD COLUMN uploader TEXT DEFAULT ''")
+        if "video_title" not in columns:
+            cursor.execute("ALTER TABLE tasks ADD COLUMN video_title TEXT DEFAULT ''")
+        if "url" not in columns:
+            cursor.execute("ALTER TABLE tasks ADD COLUMN url TEXT DEFAULT ''")
+            
         conn.commit()
 
 # --- 歌曲归档管理 ---
@@ -78,7 +92,6 @@ def add_song_record(
         return cursor.lastrowid
 
 def get_history_songs(limit: int = 150, keyword: Optional[str] = None) -> List[Dict[str, Any]]:
-    """查询历史已归档歌曲列表"""
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
@@ -96,7 +109,6 @@ def get_history_songs(limit: int = 150, keyword: Optional[str] = None) -> List[D
         return [dict(r) for r in rows]
 
 def delete_song_record(song_id: int) -> Optional[str]:
-    """删除指定历史记录，并返回其文件路径供清理磁盘"""
     with sqlite3.connect(DB_PATH) as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT file_path FROM songs WHERE id = ?", (song_id,))
@@ -108,7 +120,6 @@ def delete_song_record(song_id: int) -> Optional[str]:
         return file_path
 
 def batch_delete_song_records(song_ids: List[int]) -> List[str]:
-    """批量删除选中的历史记录，并返回所有对应的文件路径供清理磁盘"""
     if not song_ids:
         return []
     with sqlite3.connect(DB_PATH) as conn:
@@ -137,26 +148,37 @@ def save_or_update_task(
     total_tracks: int = 0,
     processed_tracks: int = 0,
     tracks_json: str = "[]",
-    files_json: str = "[]"
+    files_json: str = "[]",
+    uploader: str = "",
+    video_title: str = "",
+    url: str = ""
 ):
-    """保存或更新任务状态至 SQLite，确保刷新页面任务不丢失"""
+    """保存或更新任务状态至 SQLite，包含完整原视频与 UP主 信息"""
     with sqlite3.connect(DB_PATH) as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO tasks (id, bvid, title, album, cover_url, format, status, progress, step, total_tracks, processed_tracks, tracks_json, files_json, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            INSERT INTO tasks (
+                id, bvid, title, album, cover_url, uploader, video_title, url, format,
+                status, progress, step, total_tracks, processed_tracks, tracks_json, files_json, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(id) DO UPDATE SET
                 status = excluded.status,
                 progress = excluded.progress,
                 step = excluded.step,
                 processed_tracks = excluded.processed_tracks,
-                files_json = excluded.files_json,
+                files_json = CASE WHEN excluded.files_json != '[]' THEN excluded.files_json ELSE tasks.files_json END,
+                uploader = CASE WHEN excluded.uploader != '' THEN excluded.uploader ELSE tasks.uploader END,
+                video_title = CASE WHEN excluded.video_title != '' THEN excluded.video_title ELSE tasks.video_title END,
+                url = CASE WHEN excluded.url != '' THEN excluded.url ELSE tasks.url END,
                 updated_at = CURRENT_TIMESTAMP
-        """, (task_id, bvid, title, album, cover_url, fmt, status, progress, step, total_tracks, processed_tracks, tracks_json, files_json))
+        """, (
+            task_id, bvid, title, album, cover_url, uploader, video_title, url, fmt,
+            status, progress, step, total_tracks, processed_tracks, tracks_json, files_json
+        ))
         conn.commit()
 
 def get_task_by_id(task_id: str) -> Optional[Dict[str, Any]]:
-    """查询指定任务状态"""
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
@@ -169,8 +191,7 @@ def get_task_by_id(task_id: str) -> Optional[Dict[str, Any]]:
         res["tracks"] = json.loads(res.get("tracks_json") or "[]")
         return res
 
-def get_recent_tasks(limit: int = 20) -> List[Dict[str, Any]]:
-    """获取所有近期任务历史"""
+def get_recent_tasks(limit: int = 30) -> List[Dict[str, Any]]:
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
@@ -183,5 +204,12 @@ def get_recent_tasks(limit: int = 20) -> List[Dict[str, Any]]:
             d["tracks"] = json.loads(d.get("tracks_json") or "[]")
             result.append(d)
         return result
+
+def delete_task_record(task_id: str) -> bool:
+    with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+        conn.commit()
+        return cursor.rowcount > 0
 
 init_db()

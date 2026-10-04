@@ -600,6 +600,8 @@ startProcessBtn.addEventListener('click', async () => {
             bvid: currentVideo.bvid,
             album: albumInput.value.trim() || currentVideo.title,
             cover_url: currentVideo.cover_url,
+            uploader: currentVideo.uploader || '',
+            video_title: currentVideo.title || '',
             format: formatSelect.value,
             tracks: currentVideo.tracks,
             use_loudnorm: loudnormToggle.checked,
@@ -633,6 +635,7 @@ function startTaskPolling(taskId) {
     
     quickTaskIndicator.classList.remove('hidden');
     navActiveTaskBadge.classList.remove('hidden');
+    progressBox.classList.remove('hidden');
 
     pollTimer = setInterval(async () => {
         try {
@@ -649,7 +652,16 @@ function startTaskPolling(taskId) {
             quickTaskText.innerText = `${data.progress}% ${data.step ? data.step.substring(0, 15) : ''}`;
 
             if (data.status === 'completed') {
-                stopTaskPolling();
+                // 成功后顶部指示器切换为完成状态，驻留 4 秒后平滑隐去
+                quickTaskText.innerText = '✓ 归档已完成 (100%)';
+                quickTaskIndicator.className = 'flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-600 dark:text-emerald-400 font-mono text-[11px] transition-all';
+                setTimeout(() => {
+                    stopTaskPolling();
+                    quickTaskIndicator.className = 'hidden flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-mono text-[11px] cursor-pointer';
+                }, 4000);
+
+                clearInterval(pollTimer);
+                pollTimer = null;
                 startProcessBtn.disabled = false;
                 progressBox.classList.add('hidden');
                 showCompleted(taskId, data);
@@ -682,6 +694,11 @@ async function checkActiveTasksOnLoad() {
         const tasks = data.tasks || [];
         const running = tasks.find(t => t.status === 'processing' || t.status === 'pending');
         if (running) {
+            // 刷新页面后自动恢复正在运行的任务展示与进度条
+            progressBox.classList.remove('hidden');
+            progressBar.style.width = `${running.progress}%`;
+            progressPct.innerText = `${running.progress}%`;
+            progressStep.innerText = running.step || '正在处理中...';
             startTaskPolling(running.id);
         }
     } catch (e) {
@@ -773,19 +790,39 @@ async function loadTasksHistory() {
             }
 
             const dateStr = (t.updated_at || t.created_at || '').substring(0, 16);
+            const coverSrc = t.cover_url ? ('/api/cover-proxy?url=' + encodeURIComponent(t.cover_url)) : '';
+            const biliUrl = t.url || `https://www.bilibili.com/video/${t.bvid}`;
+            const videoDisplayName = t.video_title || t.title || t.album;
 
             tr.innerHTML = `
                 <td class="py-2.5 px-3">
-                    <div class="font-medium text-slate-900 dark:text-white truncate max-w-sm">${t.title || t.album}</div>
-                    <div class="text-[10px] text-slate-500 font-mono">${t.bvid} · 共 ${t.total_tracks} 首歌</div>
+                    <div class="flex items-center gap-3">
+                        ${coverSrc ? `<img src="${coverSrc}" class="w-12 h-8 object-cover rounded bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-[#1f2a3d] flex-shrink-0" alt="">` : `<div class="w-12 h-8 rounded bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 flex-shrink-0"><i data-lucide="music" class="w-3.5 h-3.5"></i></div>`}
+                        <div class="min-w-0 flex-1">
+                            <div class="flex items-center gap-1.5">
+                                <a href="${biliUrl}" target="_blank" class="font-medium text-slate-900 dark:text-white hover:text-emerald-600 dark:hover:text-emerald-400 transition truncate max-w-xs flex items-center gap-1" title="在 B站 打开原视频">
+                                    <span class="truncate">${videoDisplayName}</span>
+                                    <i data-lucide="external-link" class="w-3 h-3 text-slate-400 flex-shrink-0"></i>
+                                </a>
+                            </div>
+                            <div class="flex items-center gap-2 text-[11px] text-slate-500 font-mono mt-0.5">
+                                <span class="text-slate-600 dark:text-slate-400 font-sans">UP: ${t.uploader || 'Bilibili'}</span>
+                                <span>·</span>
+                                <span>${t.bvid}</span>
+                            </div>
+                        </div>
+                    </div>
                 </td>
                 <td class="py-2.5 px-3 text-center">${statusBadge}</td>
                 <td class="py-2.5 px-3 text-center">
-                    <div class="w-full flex items-center gap-2">
-                        <div class="flex-1 h-1 bg-slate-100 dark:bg-[#090c10] rounded-full overflow-hidden">
+                    <div class="w-full space-y-1">
+                        <div class="flex items-center justify-between text-[10px] font-mono text-slate-500">
+                            <span>${t.processed_tracks || 0}/${t.total_tracks || 0} 首</span>
+                            <span>${t.progress || 0}%</span>
+                        </div>
+                        <div class="w-full h-1 bg-slate-100 dark:bg-[#090c10] rounded-full overflow-hidden">
                             <div class="h-full bg-emerald-600 dark:bg-brand" style="width: ${t.progress || 0}%"></div>
                         </div>
-                        <span class="text-[10px] font-mono text-slate-500 w-8">${t.progress || 0}%</span>
                     </div>
                 </td>
                 <td class="py-2.5 px-3 text-center font-mono uppercase text-[10px] text-slate-500">${t.format || 'flac'}</td>
@@ -798,10 +835,13 @@ async function loadTasksHistory() {
                                 <span>继续</span>
                             </button>
                         ` : `
-                            <a href="/api/download/${t.id}/zip" class="p-1 text-slate-400 hover:text-emerald-600 transition" title="下载 ZIP">
-                                <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                            <a href="/api/download/${t.id}/zip" class="p-1 text-slate-400 hover:text-emerald-600 transition" title="下载 ZIP 包">
+                                <i data-lucide="archive" class="w-3.5 h-3.5"></i>
                             </a>
                         `}
+                        <button class="del-task-btn p-1 text-slate-400 hover:text-rose-500 transition cursor-pointer" data-id="${t.id}" title="删除任务记录">
+                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                        </button>
                     </div>
                 </td>
             `;
@@ -811,11 +851,29 @@ async function loadTasksHistory() {
                 retryBtn.addEventListener('click', async (e) => {
                     const id = e.currentTarget.dataset.id;
                     try {
-                        await fetch(`/api/tasks/retry/${id}`, { method: 'POST' });
+                        const resp = await fetch(`/api/tasks/retry/${id}`, { method: 'POST' });
+                        const res = await resp.json();
+                        if (res.status === 'already_running') {
+                            alert('该任务已经在后台运行中，请勿重复点击');
+                        }
                         startTaskPolling(id);
                         loadTasksHistory();
                     } catch (err) {
                         alert('启动续提失败');
+                    }
+                });
+            }
+
+            const delTaskBtn = tr.querySelector('.del-task-btn');
+            if (delTaskBtn) {
+                delTaskBtn.addEventListener('click', async (e) => {
+                    if (!confirm('确定删除此任务记录？')) return;
+                    const id = e.currentTarget.dataset.id;
+                    try {
+                        await fetch(`/api/tasks/${id}`, { method: 'DELETE' });
+                        loadTasksHistory();
+                    } catch (err) {
+                        alert('删除任务失败');
                     }
                 });
             }

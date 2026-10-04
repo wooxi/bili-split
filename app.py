@@ -36,7 +36,8 @@ from db import (
     batch_delete_song_records,
     save_or_update_task,
     get_task_by_id,
-    get_recent_tasks
+    get_recent_tasks,
+    delete_task_record
 )
 
 app = FastAPI(
@@ -81,6 +82,8 @@ class ProcessRequest(BaseModel):
     bvid: str
     album: str
     cover_url: str
+    uploader: Optional[str] = ""
+    video_title: Optional[str] = ""
     format: str = "flac"  # 默认最高音质 FLAC
     tracks: List[TrackItem]
     use_loudnorm: Optional[bool] = ENABLE_LOUDNORM
@@ -198,7 +201,9 @@ def background_split_task(task_id: str, req_data: ProcessRequest):
             task_id=task_id, bvid=bvid, title=req_data.album, album=album,
             cover_url=req_data.cover_url, fmt=fmt, status="processing",
             progress=1, step=task["step"], total_tracks=total_tracks,
-            processed_tracks=0, tracks_json=json.dumps(tracks_dump)
+            processed_tracks=0, tracks_json=json.dumps(tracks_dump),
+            uploader=req_data.uploader, video_title=req_data.video_title or req_data.album,
+            url=f"https://www.bilibili.com/video/{bvid}"
         )
 
         cover_path = os.path.join(TEMP_DIR, f"{task_id}_cover.jpg")
@@ -224,7 +229,9 @@ def background_split_task(task_id: str, req_data: ProcessRequest):
                 task_id=task_id, bvid=bvid, title=req_data.album, album=album,
                 cover_url=req_data.cover_url, fmt=fmt, status="processing",
                 progress=progress, step=task["step"], total_tracks=total,
-                processed_tracks=current
+                processed_tracks=current, uploader=req_data.uploader,
+                video_title=req_data.video_title or req_data.album,
+                url=f"https://www.bilibili.com/video/{bvid}"
             )
 
         # 执行切分与智能断点去重
@@ -266,7 +273,9 @@ def background_split_task(task_id: str, req_data: ProcessRequest):
             task_id=task_id, bvid=bvid, title=req_data.album, album=album,
             cover_url=req_data.cover_url, fmt=fmt, status="completed",
             progress=100, step=task["step"], total_tracks=total_tracks,
-            processed_tracks=total_tracks, files_json=json.dumps(task["files"])
+            processed_tracks=total_tracks, files_json=json.dumps(task["files"]),
+            uploader=req_data.uploader, video_title=req_data.video_title or req_data.album,
+            url=f"https://www.bilibili.com/video/{bvid}"
         )
 
     except Exception as e:
@@ -275,7 +284,9 @@ def background_split_task(task_id: str, req_data: ProcessRequest):
         save_or_update_task(
             task_id=task_id, bvid=req_data.bvid, title=req_data.album, album=req_data.album,
             cover_url=req_data.cover_url, fmt=req_data.format, status="error",
-            progress=task.get("progress", 0), step=task["step"]
+            progress=task.get("progress", 0), step=task["step"],
+            uploader=req_data.uploader, video_title=req_data.video_title or req_data.album,
+            url=f"https://www.bilibili.com/video/{req_data.bvid}"
         )
         print(f"任务异常 [{task_id}]: {e}")
 
@@ -297,7 +308,9 @@ async def api_process(req: ProcessRequest, background_tasks: BackgroundTasks):
         task_id=task_id, bvid=req.bvid, title=req.album, album=req.album,
         cover_url=req.cover_url, fmt=req.format, status="pending",
         progress=0, step="已加入处理队列...", total_tracks=len(req.tracks),
-        processed_tracks=0, tracks_json=json.dumps([t.model_dump() for t in req.tracks])
+        processed_tracks=0, tracks_json=json.dumps([t.model_dump() for t in req.tracks]),
+        uploader=req.uploader, video_title=req.video_title or req.album,
+        url=f"https://www.bilibili.com/video/{req.bvid}"
     )
     
     background_tasks.add_task(background_split_task, task_id, req)
@@ -330,10 +343,17 @@ async def api_get_recent_tasks():
 @app.post("/api/tasks/retry/{task_id}")
 async def api_retry_task(task_id: str, background_tasks: BackgroundTasks):
     """智能重试/继续执行中断的任务 (利用完整性校验自动跳过已提取曲目)"""
+    # 如果正在运行中，则直接返回，禁止重复启动并发线程
+    if task_id in tasks and tasks[task_id].get("status") in ("processing", "pending"):
+        return {"task_id": task_id, "status": "already_running", "message": "任务已经在后台运行中"}
+
     db_task = get_task_by_id(task_id)
     if not db_task:
         raise HTTPException(status_code=404, detail="任务不存在")
         
+    if db_task.get("status") == "processing":
+        return {"task_id": task_id, "status": "already_running", "message": "任务已经在后台运行中"}
+
     tracks = [TrackItem(**t) for t in db_task.get("tracks", [])]
     if not tracks:
         raise HTTPException(status_code=400, detail="该任务无有效曲目数据")
@@ -342,6 +362,8 @@ async def api_retry_task(task_id: str, background_tasks: BackgroundTasks):
         bvid=db_task["bvid"],
         album=db_task["album"],
         cover_url=db_task.get("cover_url", ""),
+        uploader=db_task.get("uploader", ""),
+        video_title=db_task.get("video_title", db_task["album"]),
         format=db_task.get("format", "flac"),
         tracks=tracks
     )
@@ -349,12 +371,20 @@ async def api_retry_task(task_id: str, background_tasks: BackgroundTasks):
     tasks[task_id] = {
         "status": "pending",
         "step": "准备断点续提...",
-        "progress": 0,
+        "progress": db_task.get("progress", 0),
         "files": [],
         "zip_filename": None
     }
     background_tasks.add_task(background_split_task, task_id, req)
     return {"task_id": task_id, "status": "requeued"}
+
+@app.delete("/api/tasks/{task_id}")
+async def api_delete_task(task_id: str):
+    """删除某条任务记录"""
+    success = delete_task_record(task_id)
+    if task_id in tasks:
+        del tasks[task_id]
+    return {"status": "ok", "deleted": success}
 
 @app.get("/api/download/{task_id}/zip")
 async def api_download_zip(task_id: str):
