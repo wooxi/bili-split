@@ -783,8 +783,10 @@ async function loadTasksHistory() {
                 statusBadge = '<span class="text-[10px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 font-medium">已完成</span>';
             } else if (t.status === 'processing') {
                 statusBadge = '<span class="text-[10px] px-2 py-0.5 rounded bg-brand/10 text-emerald-600 dark:text-brand border border-brand/20 font-medium flex items-center justify-center gap-1"><i data-lucide="loader-2" class="w-3 h-3 animate-spin"></i>处理中</span>';
+            } else if (t.status === 'interrupted') {
+                statusBadge = '<span class="text-[10px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 font-medium">已中断</span>';
             } else if (t.status === 'error') {
-                statusBadge = '<span class="text-[10px] px-2 py-0.5 rounded bg-rose-500/10 text-rose-500 border border-rose-500/20 font-medium">异常中断</span>';
+                statusBadge = '<span class="text-[10px] px-2 py-0.5 rounded bg-rose-500/10 text-rose-500 border border-rose-500/20 font-medium">异常出错</span>';
             } else {
                 statusBadge = '<span class="text-[10px] px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700 font-medium">等待中</span>';
             }
@@ -829,16 +831,18 @@ async function loadTasksHistory() {
                 <td class="py-2.5 px-3 text-center font-mono text-slate-500 text-[10px]">${dateStr}</td>
                 <td class="py-2.5 px-3 text-right">
                     <div class="flex items-center justify-end gap-1.5">
-                        ${t.status !== 'completed' ? `
+                        ${t.status === 'completed' ? `
+                            <a href="/api/download/${t.id}/zip" class="p-1 text-slate-400 hover:text-emerald-600 transition" title="下载 ZIP 包">
+                                <i data-lucide="archive" class="w-3.5 h-3.5"></i>
+                            </a>
+                        ` : (t.status === 'processing' ? `
+                            <span class="text-[10px] text-emerald-600 font-mono animate-pulse px-2 py-1">进行中</span>
+                        ` : `
                             <button class="retry-task-btn px-2 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-[#161e2e] dark:hover:bg-[#1c263b] rounded text-[11px] text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition flex items-center gap-1 cursor-pointer" data-id="${t.id}" title="断点续提 (自动跳过已完成歌曲)">
                                 <i data-lucide="play" class="w-3 h-3 fill-current"></i>
                                 <span>继续</span>
                             </button>
-                        ` : `
-                            <a href="/api/download/${t.id}/zip" class="p-1 text-slate-400 hover:text-emerald-600 transition" title="下载 ZIP 包">
-                                <i data-lucide="archive" class="w-3.5 h-3.5"></i>
-                            </a>
-                        `}
+                        `)}
                         <button class="del-task-btn p-1 text-slate-400 hover:text-rose-500 transition cursor-pointer" data-id="${t.id}" title="删除任务记录">
                             <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
                         </button>

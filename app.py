@@ -105,6 +105,23 @@ class TestAiRequest(BaseModel):
     ai_api_key: str
     ai_model: str
 
+@app.on_event("startup")
+async def on_server_startup():
+    """服务启动时自动纠偏：将上次因容器重启意外中断的幽灵任务重置为 interrupted，允许断点续提"""
+    try:
+        import sqlite3
+        from config import DB_PATH
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.execute("""
+                UPDATE tasks 
+                SET status = 'interrupted', 
+                    step = '任务中断，已保留已提取曲目，可点击继续断点续提' 
+                WHERE status IN ('processing', 'pending')
+            """)
+            conn.commit()
+    except Exception as e:
+        print(f"初始化任务状态纠偏异常: {e}")
+
 @app.get("/api/config")
 async def api_get_config():
     """获取当前服务配置与可编辑参数"""
@@ -343,16 +360,13 @@ async def api_get_recent_tasks():
 @app.post("/api/tasks/retry/{task_id}")
 async def api_retry_task(task_id: str, background_tasks: BackgroundTasks):
     """智能重试/继续执行中断的任务 (利用完整性校验自动跳过已提取曲目)"""
-    # 如果正在运行中，则直接返回，禁止重复启动并发线程
+    # 仅当任务在当前内存活跃运行时，才拦截并提示已有线程运行
     if task_id in tasks and tasks[task_id].get("status") in ("processing", "pending"):
         return {"task_id": task_id, "status": "already_running", "message": "任务已经在后台运行中"}
 
     db_task = get_task_by_id(task_id)
     if not db_task:
         raise HTTPException(status_code=404, detail="任务不存在")
-        
-    if db_task.get("status") == "processing":
-        return {"task_id": task_id, "status": "already_running", "message": "任务已经在后台运行中"}
 
     tracks = [TrackItem(**t) for t in db_task.get("tracks", [])]
     if not tracks:
