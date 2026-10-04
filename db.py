@@ -107,6 +107,21 @@ def delete_song_record(song_id: int) -> Optional[str]:
         conn.commit()
         return file_path
 
+def batch_delete_song_records(song_ids: List[int]) -> List[str]:
+    """批量删除选中的历史记录，并返回所有对应的文件路径供清理磁盘"""
+    if not song_ids:
+        return []
+    with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.cursor()
+        placeholders = ",".join("?" for _ in song_ids)
+        cursor.execute(f"SELECT file_path FROM songs WHERE id IN ({placeholders})", song_ids)
+        rows = cursor.fetchall()
+        file_paths = [r[0] for r in rows if r[0]]
+        
+        cursor.execute(f"DELETE FROM songs WHERE id IN ({placeholders})", song_ids)
+        conn.commit()
+        return file_paths
+
 # --- 任务持久化与断点管理 ---
 
 def save_or_update_task(

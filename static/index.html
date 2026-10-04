@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-CN" class="dark">
+<html lang="zh-CN" class="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -12,18 +12,11 @@
             theme: {
                 extend: {
                     colors: {
-                        surface: {
-                            base: '#090c10',
-                            card: '#0f141f',
-                            hover: '#161e2e',
-                            active: '#1c263b',
-                            border: '#1f2a3d',
-                            borderLight: '#2a3750'
-                        },
                         brand: {
-                            DEFAULT: '#10b981',
-                            hover: '#059669',
-                            muted: '#064e3b'
+                            DEFAULT: '#059669',
+                            hover: '#047857',
+                            dark: '#10b981',
+                            darkHover: '#059669'
                         }
                     }
                 }
@@ -33,57 +26,63 @@
     <link rel="stylesheet" href="/static/style.css">
     <script src="https://unpkg.com/lucide@latest"></script>
 </head>
-<body class="bg-surface-base text-slate-200 h-screen w-screen overflow-hidden flex font-sans selection:bg-brand selection:text-white">
+<body class="bg-slate-50 dark:bg-[#090c10] text-slate-800 dark:text-slate-200 h-screen w-screen overflow-hidden flex font-sans selection:bg-emerald-600 selection:text-white transition-colors duration-200">
 
     <!-- ============================================================== -->
     <!-- 左侧主导航菜单 (Sidebar)                                         -->
     <!-- ============================================================== -->
-    <aside class="w-60 bg-surface-card border-r border-surface-border flex flex-col justify-between flex-shrink-0 z-40 select-none">
+    <aside class="w-60 bg-white dark:bg-[#0f141f] border-r border-slate-200 dark:border-[#1f2a3d] flex flex-col justify-between flex-shrink-0 z-40 select-none transition-colors duration-200">
         <div class="flex flex-col">
-            <!-- 品牌标识 -->
-            <div class="h-14 px-5 border-b border-surface-border flex items-center gap-2.5">
-                <div class="w-7 h-7 rounded-lg bg-brand/10 border border-brand/30 flex items-center justify-center text-brand">
-                    <i data-lucide="disc-3" class="w-4 h-4"></i>
+            <!-- 品牌标识与主题切换器 -->
+            <div class="h-14 px-5 border-b border-slate-200 dark:border-[#1f2a3d] flex items-center justify-between">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+                        <i data-lucide="disc-3" class="w-4 h-4"></i>
+                    </div>
+                    <span class="font-bold text-sm tracking-wider uppercase text-slate-900 dark:text-white font-mono">BiliSplit</span>
                 </div>
-                <span class="font-bold text-sm tracking-wider uppercase text-white font-mono">BiliSplit</span>
-                <span class="text-[9px] px-1.5 py-0.2 rounded bg-surface-hover text-slate-400 font-mono ml-auto">v1.3</span>
+                
+                <!-- 主题切换按钮 (Light ☀️ / Dark 🌙) -->
+                <button id="themeToggleBtn" class="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#161e2e] transition cursor-pointer" title="切换深浅主题">
+                    <i id="themeIcon" data-lucide="sun" class="w-4 h-4"></i>
+                </button>
             </div>
 
-            <!-- 导航项列表 -->
+            <!-- 导航菜单 -->
             <nav class="p-3 space-y-1 text-xs font-medium">
-                <button id="navWorkstation" class="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg bg-surface-active text-white transition cursor-pointer">
-                    <i data-lucide="scissors" class="w-4 h-4 text-brand"></i>
+                <button id="navWorkstation" class="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg bg-slate-100 dark:bg-[#1c263b] text-slate-900 dark:text-white transition cursor-pointer font-semibold">
+                    <i data-lucide="scissors" class="w-4 h-4 text-emerald-600 dark:text-emerald-400"></i>
                     <span>音频工作台</span>
                 </button>
-                <button id="navTasks" class="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-surface-hover transition cursor-pointer">
+                <button id="navTasks" class="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#161e2e] transition cursor-pointer">
                     <i data-lucide="activity" class="w-4 h-4"></i>
                     <span>任务队列</span>
-                    <span id="navActiveTaskBadge" class="hidden ml-auto w-2 h-2 rounded-full bg-brand animate-ping"></span>
+                    <span id="navActiveTaskBadge" class="hidden ml-auto w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
                 </button>
-                <button id="navLibrary" class="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-surface-hover transition cursor-pointer">
+                <button id="navLibrary" class="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#161e2e] transition cursor-pointer">
                     <i data-lucide="library" class="w-4 h-4"></i>
                     <span>媒体曲库</span>
-                    <span id="navLibraryCountBadge" class="ml-auto px-1.5 py-0.2 rounded-full bg-slate-800 text-[10px] text-slate-400 font-mono">0</span>
+                    <span id="navLibraryCountBadge" class="ml-auto px-1.5 py-0.2 rounded-full bg-slate-200 dark:bg-slate-800 text-[10px] text-slate-600 dark:text-slate-400 font-mono">0</span>
                 </button>
-                <button id="navSettings" class="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-surface-hover transition cursor-pointer">
+                <button id="navSettings" class="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#161e2e] transition cursor-pointer">
                     <i data-lucide="settings-2" class="w-4 h-4"></i>
                     <span>系统配置</span>
                 </button>
             </nav>
         </div>
 
-        <!-- 底部系统信息部件 -->
-        <div class="p-3.5 border-t border-surface-border text-[11px] text-slate-500 font-mono space-y-2">
+        <!-- 底部存储挂载信息 -->
+        <div class="p-3.5 border-t border-slate-200 dark:border-[#1f2a3d] text-[11px] text-slate-500 font-mono space-y-2">
             <div class="flex items-center justify-between">
                 <div class="flex items-center gap-1.5">
-                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                    <span class="text-slate-400">Docker 在线</span>
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                    <span class="text-slate-700 dark:text-slate-300 font-sans">Docker 在线</span>
                 </div>
                 <span id="sidebarPlatformText">Linux</span>
             </div>
-            <div class="p-2 rounded bg-surface-base border border-surface-border/60 text-[10px] truncate" title="存储挂载点">
-                <div class="text-slate-600 mb-0.5">MUSIC_DIR</div>
-                <div id="sidebarMusicPath" class="text-slate-300 truncate font-semibold">/music</div>
+            <div class="p-2 rounded bg-slate-50 dark:bg-[#090c10] border border-slate-200 dark:border-[#1f2a3d] text-[10px] truncate">
+                <div class="text-slate-500 mb-0.5">MUSIC_DIR</div>
+                <div id="sidebarMusicPath" class="text-slate-800 dark:text-slate-200 truncate font-semibold">/music</div>
             </div>
         </div>
     </aside>
@@ -94,119 +93,118 @@
     <div class="flex-1 flex flex-col h-full overflow-hidden relative">
 
         <!-- 顶部轻量状态栏 -->
-        <header class="h-14 border-b border-surface-border px-6 flex items-center justify-between flex-shrink-0 bg-surface-base">
+        <header class="h-14 border-b border-slate-200 dark:border-[#1f2a3d] px-6 flex items-center justify-between flex-shrink-0 bg-white/80 dark:bg-[#090c10]/80 backdrop-blur-md transition-colors duration-200">
             <div class="flex items-center gap-2">
-                <h2 id="viewTitle" class="text-sm font-semibold text-white">音频提取工作台</h2>
+                <h2 id="viewTitle" class="text-sm font-semibold text-slate-900 dark:text-white">音频工作台</h2>
             </div>
             <div class="flex items-center gap-3 text-xs">
-                <!-- 全局快速任务指示灯 -->
-                <div id="quickTaskIndicator" class="hidden flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-mono text-[11px] cursor-pointer">
+                <div id="quickTaskIndicator" class="hidden flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-mono text-[11px] cursor-pointer">
                     <i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i>
                     <span id="quickTaskText">处理中 0%</span>
                 </div>
             </div>
         </header>
 
-        <!-- 页面视图滚动容器 -->
-        <div class="flex-1 overflow-y-auto relative pb-20">
+        <!-- 主视图滚动区域 -->
+        <div class="flex-1 overflow-y-auto relative pb-24">
 
             <!-- -------------------------------------------------------- -->
             <!-- 视图 1: 音频工作台                                       -->
             <!-- -------------------------------------------------------- -->
             <section id="viewWorkstation" class="p-6 max-w-6xl mx-auto space-y-5">
                 <!-- 链接解析输入栏 -->
-                <div class="bg-surface-card border border-surface-border rounded-xl p-2.5 flex items-center gap-2 shadow-sm">
-                    <div class="pl-2.5 text-slate-500">
+                <div class="bg-white dark:bg-[#0f141f] border border-slate-200 dark:border-[#1f2a3d] rounded-xl p-2.5 flex items-center gap-2 shadow-sm transition-colors duration-200">
+                    <div class="pl-2.5 text-slate-400">
                         <i data-lucide="link-2" class="w-4 h-4"></i>
                     </div>
                     <input 
                         type="text" 
                         id="urlInput"
                         placeholder="输入 Bilibili 视频链接、分P视频或播单合集 URL..." 
-                        class="flex-1 bg-transparent px-2 py-1.5 text-sm text-slate-100 placeholder-slate-500 outline-none font-mono"
+                        class="flex-1 bg-transparent px-2 py-1.5 text-sm text-slate-900 dark:text-slate-100 placeholder-slate-400 outline-none font-mono"
                     >
                     <button 
                         id="parseBtn" 
-                        class="px-5 py-2 bg-brand hover:bg-brand-hover active:scale-95 text-white font-medium rounded-lg text-xs transition flex items-center gap-1.5 cursor-pointer shadow"
+                        class="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-medium rounded-lg text-xs transition flex items-center gap-1.5 cursor-pointer shadow-sm"
                     >
                         <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
                         <span>解析提取</span>
                     </button>
                 </div>
 
-                <!-- 空状态占位 -->
-                <div id="workstationEmpty" class="py-24 text-center text-slate-600 space-y-3">
-                    <div class="w-12 h-12 rounded-2xl bg-surface-card border border-surface-border flex items-center justify-center mx-auto text-slate-500">
+                <!-- 空状态 -->
+                <div id="workstationEmpty" class="py-24 text-center text-slate-400 dark:text-slate-600 space-y-3">
+                    <div class="w-12 h-12 rounded-2xl bg-white dark:bg-[#0f141f] border border-slate-200 dark:border-[#1f2a3d] flex items-center justify-center mx-auto text-slate-400 shadow-sm">
                         <i data-lucide="music-2" class="w-6 h-6"></i>
                     </div>
                     <p class="text-xs">支持单曲、合集串烧、分P视频及官方播单</p>
                 </div>
 
-                <!-- 提取编辑面板 -->
+                <!-- 解析编辑面板 -->
                 <div id="editorPanel" class="hidden space-y-4">
                     
-                    <!-- 视频元数据与全局配置卡片 -->
-                    <div class="bg-surface-card border border-surface-border rounded-xl p-4 flex flex-col md:flex-row gap-5 items-start">
-                        <img id="videoCover" src="" referrerpolicy="no-referrer" alt="" class="w-36 h-22 object-cover rounded-lg border border-surface-border bg-slate-900 flex-shrink-0">
+                    <!-- 视频信息卡片 -->
+                    <div class="bg-white dark:bg-[#0f141f] border border-slate-200 dark:border-[#1f2a3d] rounded-xl p-4 flex flex-col md:flex-row gap-5 items-start shadow-sm transition-colors duration-200">
+                        <img id="videoCover" src="" referrerpolicy="no-referrer" alt="" class="w-36 h-22 object-cover rounded-lg border border-slate-200 dark:border-[#1f2a3d] bg-slate-100 dark:bg-slate-900 flex-shrink-0">
                         
                         <div class="flex-1 min-w-0 space-y-2">
                             <div class="flex items-center gap-2">
-                                <span id="sourceBadge" class="text-[10px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium font-mono"></span>
-                                <span id="durationBadge" class="text-[10px] text-slate-400 font-mono"></span>
+                                <span id="sourceBadge" class="text-[10px] px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 font-medium font-mono"></span>
+                                <span id="durationBadge" class="text-[10px] text-slate-500 font-mono"></span>
                             </div>
-                            <h2 id="videoTitle" class="text-sm font-semibold text-white truncate"></h2>
-                            <div class="flex items-center gap-4 text-xs text-slate-400">
-                                <span>UP主: <span id="videoOwner" class="text-slate-200"></span></span>
+                            <h2 id="videoTitle" class="text-sm font-semibold text-slate-900 dark:text-white truncate"></h2>
+                            <div class="flex items-center gap-4 text-xs text-slate-500">
+                                <span>UP主: <span id="videoOwner" class="text-slate-800 dark:text-slate-200 font-medium"></span></span>
                             </div>
                         </div>
 
                         <!-- 参数设置 -->
-                        <div class="w-full md:w-84 flex flex-col gap-2.5 pt-3 md:pt-0 md:border-l md:border-surface-border md:pl-5 text-xs">
+                        <div class="w-full md:w-84 flex flex-col gap-2.5 pt-3 md:pt-0 md:border-l md:border-slate-200 dark:md:border-[#1f2a3d] md:pl-5 text-xs">
                             <div class="flex items-center gap-2">
-                                <span class="text-slate-400 w-12 flex-shrink-0">专辑</span>
-                                <input id="albumInput" type="text" class="flex-1 bg-surface-base px-2.5 py-1.5 rounded-lg border border-surface-border text-white text-xs outline-none focus:border-brand">
+                                <span class="text-slate-500 w-12 flex-shrink-0">专辑</span>
+                                <input id="albumInput" type="text" class="flex-1 bg-slate-50 dark:bg-[#090c10] px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-[#1f2a3d] text-slate-900 dark:text-white text-xs outline-none focus:border-emerald-600">
                             </div>
 
                             <div class="flex items-center gap-2">
-                                <span class="text-slate-400 w-12 flex-shrink-0">音质格式</span>
-                                <select id="formatSelect" class="flex-1 bg-surface-base px-2 py-1.5 rounded-lg border border-surface-border text-white text-xs outline-none focus:border-brand font-medium">
+                                <span class="text-slate-500 w-12 flex-shrink-0">音质格式</span>
+                                <select id="formatSelect" class="flex-1 bg-slate-50 dark:bg-[#090c10] px-2 py-1.5 rounded-lg border border-slate-200 dark:border-[#1f2a3d] text-slate-900 dark:text-white text-xs outline-none focus:border-emerald-600 font-medium">
                                     <option value="flac" selected>FLAC (最高无损 - 默认)</option>
                                     <option value="m4a">M4A (原音轨流 - 极速零损)</option>
                                     <option value="mp3">MP3 (320Kbps 高保真)</option>
                                 </select>
                             </div>
 
-                            <div class="flex items-center gap-4 pt-1 text-[11px] text-slate-400">
-                                <label class="flex items-center gap-1.5 cursor-pointer" title="自动统一曲目播放分贝">
-                                    <input type="checkbox" id="loudnormToggle" checked class="rounded border-slate-700 text-brand bg-surface-base">
+                            <div class="flex items-center gap-4 pt-1 text-[11px] text-slate-600 dark:text-slate-400">
+                                <label class="flex items-center gap-1.5 cursor-pointer">
+                                    <input type="checkbox" id="loudnormToggle" checked class="rounded border-slate-300 text-emerald-600">
                                     <span>响度均衡 (EBU R128)</span>
                                 </label>
-                                <label class="flex items-center gap-1.5 cursor-pointer" title="切片首尾 0.3s 平滑淡出">
-                                    <input type="checkbox" id="fadeToggle" checked class="rounded border-slate-700 text-brand bg-surface-base">
-                                    <span>首尾平滑微淡出</span>
+                                <label class="flex items-center gap-1.5 cursor-pointer">
+                                    <input type="checkbox" id="fadeToggle" checked class="rounded border-slate-300 text-emerald-600">
+                                    <span>首尾平滑淡出</span>
                                 </label>
                             </div>
                         </div>
                     </div>
 
-                    <!-- 曲目编辑表格 -->
-                    <div class="bg-surface-card border border-surface-border rounded-xl overflow-hidden">
-                        <div class="px-4 py-3 border-b border-surface-border flex items-center justify-between text-xs">
+                    <!-- 曲目表格卡片 -->
+                    <div class="bg-white dark:bg-[#0f141f] border border-slate-200 dark:border-[#1f2a3d] rounded-xl overflow-hidden shadow-sm transition-colors duration-200">
+                        <div class="px-4 py-3 border-b border-slate-200 dark:border-[#1f2a3d] flex items-center justify-between text-xs">
                             <div class="flex items-center gap-2">
-                                <span class="font-semibold text-white">曲目清单</span>
+                                <span class="font-semibold text-slate-900 dark:text-white">曲目清单</span>
                                 <span id="trackCountBadge" class="text-slate-500 font-mono">0 tracks</span>
                             </div>
 
                             <div class="flex items-center gap-2">
-                                <button id="aiNormalizeAllBtn" class="px-2.5 py-1 bg-purple-900/30 hover:bg-purple-900/50 border border-purple-500/30 text-purple-300 rounded-md transition cursor-pointer flex items-center gap-1">
-                                    <i data-lucide="sparkles" class="w-3 h-3 text-purple-400"></i>
+                                <button id="aiNormalizeAllBtn" class="px-2.5 py-1 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 text-purple-700 dark:text-purple-300 rounded-md transition cursor-pointer flex items-center gap-1">
+                                    <i data-lucide="sparkles" class="w-3 h-3 text-purple-600 dark:text-purple-400"></i>
                                     <span>AI 规范歌名</span>
                                 </button>
-                                <button id="swapAllBtn" class="px-2.5 py-1 bg-surface-hover hover:bg-surface-active border border-surface-border text-slate-300 rounded-md transition cursor-pointer flex items-center gap-1">
+                                <button id="swapAllBtn" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-[#161e2e] dark:hover:bg-[#1c263b] border border-slate-200 dark:border-[#1f2a3d] text-slate-700 dark:text-slate-300 rounded-md transition cursor-pointer flex items-center gap-1">
                                     <i data-lucide="arrow-left-right" class="w-3 h-3"></i>
                                     <span>互换歌手/歌名</span>
                                 </button>
-                                <button id="addTrackBtn" class="px-2.5 py-1 bg-surface-hover hover:bg-surface-active border border-surface-border text-slate-300 rounded-md transition cursor-pointer flex items-center gap-1">
+                                <button id="addTrackBtn" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-[#161e2e] dark:hover:bg-[#1c263b] border border-slate-200 dark:border-[#1f2a3d] text-slate-700 dark:text-slate-300 rounded-md transition cursor-pointer flex items-center gap-1">
                                     <i data-lucide="plus" class="w-3 h-3"></i>
                                     <span>新增曲目</span>
                                 </button>
@@ -215,7 +213,7 @@
 
                         <div class="overflow-x-auto">
                             <table class="w-full text-left text-xs">
-                                <thead class="bg-surface-base text-slate-400 font-medium border-b border-surface-border text-[11px]">
+                                <thead class="bg-slate-50 dark:bg-[#090c10] text-slate-500 font-medium border-b border-slate-200 dark:border-[#1f2a3d] text-[11px]">
                                     <tr>
                                         <th class="py-2.5 px-3 w-10 text-center">#</th>
                                         <th class="py-2.5 px-3 w-48">歌手</th>
@@ -225,53 +223,50 @@
                                         <th class="py-2.5 px-3 w-24 text-right">操作</th>
                                     </tr>
                                 </thead>
-                                <tbody id="trackTableBody" class="divide-y divide-surface-border/50">
+                                <tbody id="trackTableBody" class="divide-y divide-slate-100 dark:divide-[#1f2a3d]/50">
                                     <!-- 动态渲染 -->
                                 </tbody>
                             </table>
                         </div>
 
-                        <!-- 底部提交操作栏 -->
-                        <div class="p-3 bg-surface-base border-t border-surface-border flex items-center justify-between">
-                            <div class="flex items-center gap-2 text-xs text-slate-400 font-mono">
+                        <div class="p-3 bg-slate-50 dark:bg-[#090c10] border-t border-slate-200 dark:border-[#1f2a3d] flex items-center justify-between">
+                            <div class="text-xs text-slate-500 font-mono">
                                 <span>断点续提已开启：已存在完整文件将秒级跳过</span>
                             </div>
-                            <div class="flex items-center gap-3">
-                                <button 
-                                    id="startProcessBtn"
-                                    class="px-6 py-2 bg-brand hover:bg-brand-hover active:scale-95 text-white font-medium rounded-lg text-xs transition flex items-center gap-1.5 cursor-pointer shadow"
-                                >
-                                    <i data-lucide="play" class="w-3.5 h-3.5 fill-current"></i>
-                                    <span>执行导出并持久化归档</span>
-                                </button>
-                            </div>
+                            <button 
+                                id="startProcessBtn"
+                                class="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-medium rounded-lg text-xs transition flex items-center gap-1.5 cursor-pointer shadow-sm"
+                            >
+                                <i data-lucide="play" class="w-3.5 h-3.5 fill-current"></i>
+                                <span>执行导出并持久化归档</span>
+                            </button>
                         </div>
                     </div>
 
                     <!-- 进度指示条 -->
-                    <div id="progressBox" class="hidden bg-surface-card border border-surface-border rounded-xl p-4 space-y-2">
+                    <div id="progressBox" class="hidden bg-white dark:bg-[#0f141f] border border-slate-200 dark:border-[#1f2a3d] rounded-xl p-4 space-y-2 shadow-sm">
                         <div class="flex items-center justify-between text-xs">
                             <div class="flex items-center gap-2">
-                                <i id="progressSpinner" data-lucide="loader-2" class="w-3.5 h-3.5 text-brand animate-spin"></i>
-                                <span id="progressStep" class="text-slate-200">准备中...</span>
+                                <i id="progressSpinner" data-lucide="loader-2" class="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 animate-spin"></i>
+                                <span id="progressStep" class="text-slate-800 dark:text-slate-200 font-medium">准备中...</span>
                             </div>
-                            <span id="progressPct" class="font-mono text-brand font-semibold">0%</span>
+                            <span id="progressPct" class="font-mono text-emerald-600 dark:text-emerald-400 font-semibold">0%</span>
                         </div>
-                        <div class="w-full h-1.5 bg-surface-base rounded-full overflow-hidden">
-                            <div id="progressBar" class="h-full bg-brand w-0 transition-all duration-300"></div>
+                        <div class="w-full h-1.5 bg-slate-100 dark:bg-[#090c10] rounded-full overflow-hidden">
+                            <div id="progressBar" class="h-full bg-emerald-600 dark:bg-emerald-500 w-0 transition-all duration-300"></div>
                         </div>
                     </div>
 
                     <!-- 完成输出交付卡片 -->
-                    <div id="completedBox" class="hidden bg-surface-card border border-surface-border rounded-xl p-4 space-y-3">
+                    <div id="completedBox" class="hidden bg-white dark:bg-[#0f141f] border border-slate-200 dark:border-[#1f2a3d] rounded-xl p-4 space-y-3 shadow-sm">
                         <div class="flex items-center justify-between">
-                            <div class="flex items-center gap-2 text-xs text-brand font-medium">
+                            <div class="flex items-center gap-2 text-xs text-emerald-600 dark:text-emerald-400 font-medium">
                                 <i data-lucide="check-circle-2" class="w-4 h-4"></i>
                                 <span>归档完成 (已持久化至 /music)</span>
                             </div>
-                            <a id="downloadZipBtn" href="#" class="px-3 py-1 bg-surface-hover hover:bg-surface-active border border-surface-border text-slate-200 rounded-md text-xs transition flex items-center gap-1.5">
+                            <a id="downloadZipBtn" href="#" class="px-3 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-[#161e2e] dark:hover:bg-[#1c263b] border border-slate-200 dark:border-[#1f2a3d] text-slate-700 dark:text-slate-200 rounded-md text-xs transition flex items-center gap-1.5">
                                 <i data-lucide="archive" class="w-3.5 h-3.5"></i>
-                                <span>打包下载 ZIP</span>
+                                <span>下载 ZIP 包</span>
                             </a>
                         </div>
                         <div id="outputFileList" class="space-y-1.5 max-h-60 overflow-y-auto"></div>
@@ -286,18 +281,18 @@
             <section id="viewTasks" class="hidden p-6 max-w-6xl mx-auto space-y-4">
                 <div class="flex items-center justify-between">
                     <div>
-                        <h3 class="text-sm font-semibold text-white">任务执行历史与断点续提</h3>
+                        <h3 class="text-sm font-semibold text-slate-900 dark:text-white">任务执行历史与断点队列</h3>
                         <p class="text-[11px] text-slate-500">页面刷新后任务持续在后台运行，若意外中断可一键继续执行</p>
                     </div>
-                    <button id="refreshTasksBtn" class="p-1.5 text-slate-400 hover:text-white rounded-md hover:bg-surface-card transition cursor-pointer" title="刷新列表">
+                    <button id="refreshTasksBtn" class="p-1.5 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white rounded-md hover:bg-slate-100 dark:hover:bg-[#161e2e] transition cursor-pointer" title="刷新列表">
                         <i data-lucide="rotate-cw" class="w-3.5 h-3.5"></i>
                     </button>
                 </div>
 
-                <div class="bg-surface-card border border-surface-border rounded-xl overflow-hidden">
+                <div class="bg-white dark:bg-[#0f141f] border border-slate-200 dark:border-[#1f2a3d] rounded-xl overflow-hidden shadow-sm">
                     <div class="overflow-x-auto">
                         <table class="w-full text-left text-xs">
-                            <thead class="bg-surface-base text-slate-400 font-medium border-b border-surface-border text-[11px]">
+                            <thead class="bg-slate-50 dark:bg-[#090c10] text-slate-500 font-medium border-b border-slate-200 dark:border-[#1f2a3d] text-[11px]">
                                 <tr>
                                     <th class="py-2.5 px-3">合集 / 视频标题</th>
                                     <th class="py-2.5 px-3 w-28 text-center">状态</th>
@@ -307,7 +302,7 @@
                                     <th class="py-2.5 px-3 w-24 text-right">操作</th>
                                 </tr>
                             </thead>
-                            <tbody id="tasksTableBody" class="divide-y divide-surface-border/50">
+                            <tbody id="tasksTableBody" class="divide-y divide-slate-100 dark:divide-[#1f2a3d]/50">
                                 <!-- 动态注入 -->
                             </tbody>
                         </table>
@@ -316,28 +311,32 @@
             </section>
 
             <!-- -------------------------------------------------------- -->
-            <!-- 视图 3: 媒体曲库 (Media Library)                          -->
+            <!-- 视图 3: 媒体曲库 (Media Library) - 支持多选/全选批量删除 -->
             <!-- -------------------------------------------------------- -->
             <section id="viewLibrary" class="hidden p-6 max-w-6xl mx-auto space-y-4">
                 <div class="flex items-center justify-between gap-4">
                     <div class="relative flex-1 max-w-md">
-                        <i data-lucide="search" class="w-3.5 h-3.5 text-slate-500 absolute left-3 top-2.5"></i>
+                        <i data-lucide="search" class="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5"></i>
                         <input 
                             type="text" 
                             id="librarySearchInput" 
                             placeholder="搜索已归档歌曲、歌手、专辑..." 
-                            class="w-full pl-8 pr-3 py-1.5 bg-surface-card border border-surface-border rounded-lg text-xs text-slate-200 placeholder-slate-500 outline-none focus:border-brand"
+                            class="w-full pl-8 pr-3 py-1.5 bg-white dark:bg-[#0f141f] border border-slate-200 dark:border-[#1f2a3d] rounded-lg text-xs text-slate-900 dark:text-slate-200 placeholder-slate-400 outline-none focus:border-emerald-600 shadow-sm"
                         >
                     </div>
                     <div class="text-xs text-slate-500 font-mono" id="libraryStats">0 首曲目</div>
                 </div>
 
-                <div class="bg-surface-card border border-surface-border rounded-xl overflow-hidden">
+                <div class="bg-white dark:bg-[#0f141f] border border-slate-200 dark:border-[#1f2a3d] rounded-xl overflow-hidden shadow-sm relative">
                     <div class="overflow-x-auto">
                         <table class="w-full text-left text-xs">
-                            <thead class="bg-surface-base text-slate-400 font-medium border-b border-surface-border text-[11px]">
+                            <thead class="bg-slate-50 dark:bg-[#090c10] text-slate-500 font-medium border-b border-slate-200 dark:border-[#1f2a3d] text-[11px]">
                                 <tr>
-                                    <th class="py-2.5 px-3 w-10 text-center">#</th>
+                                    <!-- 全选复选框 -->
+                                    <th class="py-2.5 px-3 w-10 text-center">
+                                        <input type="checkbox" id="selectAllCheckbox" class="rounded border-slate-300 text-emerald-600 cursor-pointer" title="全选当前曲目">
+                                    </th>
+                                    <th class="py-2.5 px-2 w-10 text-center">#</th>
                                     <th class="py-2.5 px-3">曲名 / 歌手</th>
                                     <th class="py-2.5 px-3 w-48">专辑</th>
                                     <th class="py-2.5 px-3 w-20 text-center">格式</th>
@@ -346,10 +345,25 @@
                                     <th class="py-2.5 px-3 w-24 text-right">操作</th>
                                 </tr>
                             </thead>
-                            <tbody id="libraryTableBody" class="divide-y divide-surface-border/50">
+                            <tbody id="libraryTableBody" class="divide-y divide-slate-100 dark:divide-[#1f2a3d]/50">
                                 <!-- 动态渲染 -->
                             </tbody>
                         </table>
+                    </div>
+                </div>
+
+                <!-- 浮动多选批量操作栏 -->
+                <div id="batchActionBar" class="hidden sticky bottom-4 z-30 mx-auto max-w-lg bg-white dark:bg-[#0f141f] border border-slate-200 dark:border-[#1f2a3d] rounded-2xl shadow-xl px-5 py-3 flex items-center justify-between text-xs animate-in fade-in slide-in-from-bottom-2">
+                    <div class="flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                        <span id="batchCountText" class="font-medium text-slate-900 dark:text-white">已选择 0 首曲目</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button id="batchDeselectBtn" class="px-3 py-1.5 rounded-lg text-slate-500 hover:text-slate-800 dark:hover:text-white transition cursor-pointer">取消选择</button>
+                        <button id="batchDeleteBtn" class="px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-medium transition flex items-center gap-1.5 cursor-pointer shadow-sm">
+                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                            <span>一键批量删除</span>
+                        </button>
                     </div>
                 </div>
             </section>
@@ -358,41 +372,41 @@
             <!-- 视图 4: 系统配置 (Settings)                              -->
             <!-- -------------------------------------------------------- -->
             <section id="viewSettings" class="hidden p-6 max-w-4xl mx-auto space-y-5 text-xs">
-                <div class="border-b border-surface-border pb-3">
-                    <h3 class="text-sm font-semibold text-white">系统运行环境与持久化参数</h3>
+                <div class="border-b border-slate-200 dark:border-[#1f2a3d] pb-3">
+                    <h3 class="text-sm font-semibold text-slate-900 dark:text-white">系统运行环境与持久化参数</h3>
                 </div>
 
                 <div class="space-y-4">
-                    <div class="bg-surface-card border border-surface-border rounded-xl p-4 space-y-3">
-                        <div class="font-medium text-white flex items-center gap-2">
-                            <i data-lucide="hard-drive" class="w-4 h-4 text-brand"></i>
+                    <div class="bg-white dark:bg-[#0f141f] border border-slate-200 dark:border-[#1f2a3d] rounded-xl p-4 space-y-3 shadow-sm">
+                        <div class="font-medium text-slate-900 dark:text-white flex items-center gap-2">
+                            <i data-lucide="hard-drive" class="w-4 h-4 text-emerald-600 dark:text-emerald-400"></i>
                             <span>存储与持久化目录</span>
                         </div>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-slate-400 font-mono">
-                            <div class="p-2.5 bg-surface-base rounded-lg border border-surface-border">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-slate-600 dark:text-slate-400 font-mono">
+                            <div class="p-2.5 bg-slate-50 dark:bg-[#090c10] rounded-lg border border-slate-200 dark:border-[#1f2a3d]">
                                 <div class="text-[10px] text-slate-500 mb-1">音乐持久化存储点 (MUSIC_DIR)</div>
-                                <div id="cfgMusicDir" class="text-slate-200 truncate">/music</div>
+                                <div id="cfgMusicDir" class="text-slate-800 dark:text-slate-200 truncate font-semibold">/music</div>
                             </div>
-                            <div class="p-2.5 bg-surface-base rounded-lg border border-surface-border">
+                            <div class="p-2.5 bg-slate-50 dark:bg-[#090c10] rounded-lg border border-slate-200 dark:border-[#1f2a3d]">
                                 <div class="text-[10px] text-slate-500 mb-1">数据库与配置存储点 (DATA_DIR)</div>
-                                <div class="text-slate-200 truncate">/app/data/history.db</div>
+                                <div class="text-slate-800 dark:text-slate-200 truncate font-semibold">/app/data/history.db</div>
                             </div>
                         </div>
                     </div>
 
-                    <div class="bg-surface-card border border-surface-border rounded-xl p-4 space-y-3">
-                        <div class="font-medium text-white flex items-center gap-2">
-                            <i data-lucide="sliders" class="w-4 h-4 text-purple-400"></i>
+                    <div class="bg-white dark:bg-[#0f141f] border border-slate-200 dark:border-[#1f2a3d] rounded-xl p-4 space-y-3 shadow-sm">
+                        <div class="font-medium text-slate-900 dark:text-white flex items-center gap-2">
+                            <i data-lucide="sliders" class="w-4 h-4 text-purple-600 dark:text-purple-400"></i>
                             <span>音频处理滤镜参数</span>
                         </div>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-slate-400">
-                            <div class="p-2.5 bg-surface-base rounded-lg border border-surface-border">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-slate-600 dark:text-slate-400">
+                            <div class="p-2.5 bg-slate-50 dark:bg-[#090c10] rounded-lg border border-slate-200 dark:border-[#1f2a3d]">
                                 <div class="text-[10px] text-slate-500 mb-1">EBU R128 标准目标</div>
-                                <div class="text-slate-200 font-mono">I=-16 LUFS, TP=-1.5 dBFS</div>
+                                <div class="text-slate-800 dark:text-slate-200 font-mono">I=-16 LUFS, TP=-1.5 dBFS</div>
                             </div>
-                            <div class="p-2.5 bg-surface-base rounded-lg border border-surface-border">
+                            <div class="p-2.5 bg-slate-50 dark:bg-[#090c10] rounded-lg border border-slate-200 dark:border-[#1f2a3d]">
                                 <div class="text-[10px] text-slate-500 mb-1">首尾平滑过渡滤镜</div>
-                                <div class="text-slate-200 font-mono">afade 0.3s (Micro-Fade)</div>
+                                <div class="text-slate-800 dark:text-slate-200 font-mono">afade 0.3s (Micro-Fade)</div>
                             </div>
                         </div>
                     </div>
@@ -404,48 +418,48 @@
         <!-- ============================================================== -->
         <!-- 全局常驻底部流式音频播放栏 (Persistent Audio Player)               -->
         <!-- ============================================================== -->
-        <div id="playerBar" class="h-16 border-t border-surface-border bg-surface-card/95 backdrop-blur-md px-6 flex items-center justify-between absolute bottom-0 inset-x-0 z-50 select-none">
+        <div id="playerBar" class="h-16 border-t border-slate-200 dark:border-[#1f2a3d] bg-white/95 dark:bg-[#0f141f]/95 backdrop-blur-md px-6 flex items-center justify-between absolute bottom-0 inset-x-0 z-50 select-none shadow-lg transition-colors duration-200">
             <!-- 曲目信息 -->
             <div class="flex items-center gap-3 w-1/4 min-w-0">
-                <div class="w-10 h-10 rounded-lg bg-surface-base border border-surface-border flex items-center justify-center flex-shrink-0 text-slate-500 overflow-hidden">
+                <div class="w-10 h-10 rounded-lg bg-slate-100 dark:bg-[#090c10] border border-slate-200 dark:border-[#1f2a3d] flex items-center justify-center flex-shrink-0 text-slate-400 overflow-hidden">
                     <i id="playerCoverPlaceholder" data-lucide="music" class="w-5 h-5"></i>
                     <img id="playerCoverImg" src="" class="w-full h-full object-cover hidden" alt="">
                 </div>
                 <div class="min-w-0">
-                    <p id="playerTitle" class="text-xs font-semibold text-white truncate">未在播放</p>
-                    <p id="playerArtist" class="text-[11px] text-slate-400 truncate">-</p>
+                    <p id="playerTitle" class="text-xs font-semibold text-slate-900 dark:text-white truncate">未在播放</p>
+                    <p id="playerArtist" class="text-[11px] text-slate-500 truncate">-</p>
                 </div>
             </div>
 
             <!-- 核心播放器控件 (左右切歌 + 动态播放暂停切换) -->
             <div class="flex flex-col items-center gap-1.5 flex-1 max-w-lg">
                 <div class="flex items-center gap-4">
-                    <button id="playerPrevBtn" class="text-slate-400 hover:text-white transition cursor-pointer p-1" title="上一首">
+                    <button id="playerPrevBtn" class="text-slate-500 hover:text-slate-900 dark:hover:text-white transition cursor-pointer p-1" title="上一首">
                         <i data-lucide="skip-back" class="w-4 h-4 fill-current"></i>
                     </button>
-                    <button id="playerPlayBtn" class="w-8 h-8 rounded-full bg-white text-black flex items-center justify-center hover:scale-105 active:scale-95 transition cursor-pointer shadow" title="播放/暂停">
+                    <button id="playerPlayBtn" class="w-8 h-8 rounded-full bg-slate-900 text-white dark:bg-white dark:text-black flex items-center justify-center hover:scale-105 active:scale-95 transition cursor-pointer shadow" title="播放/暂停">
                         <i data-lucide="play" class="w-4 h-4 fill-current ml-0.5"></i>
                     </button>
-                    <button id="playerNextBtn" class="text-slate-400 hover:text-white transition cursor-pointer p-1" title="下一首">
+                    <button id="playerNextBtn" class="text-slate-500 hover:text-slate-900 dark:hover:text-white transition cursor-pointer p-1" title="下一首">
                         <i data-lucide="skip-forward" class="w-4 h-4 fill-current"></i>
                     </button>
                 </div>
                 
-                <div class="w-full flex items-center gap-2 text-[10px] font-mono text-slate-500">
+                <div class="w-full flex items-center gap-2 text-[10px] font-mono text-slate-400">
                     <span id="playerCurrentTime">00:00</span>
-                    <input type="range" id="playerSeeker" min="0" max="100" value="0" class="flex-1 h-1 bg-surface-base rounded-lg appearance-none cursor-pointer accent-brand">
+                    <input type="range" id="playerSeeker" min="0" max="100" value="0" class="flex-1 h-1 bg-slate-200 dark:bg-[#090c10] rounded-lg appearance-none cursor-pointer accent-emerald-600">
                     <span id="playerDuration">00:00</span>
                 </div>
             </div>
 
             <!-- 辅助工具 (下载、音量控制) -->
             <div class="flex items-center justify-end gap-3 w-1/4">
-                <a id="playerDownloadBtn" href="#" download="" class="text-slate-400 hover:text-brand transition p-1" title="下载原文件">
+                <a id="playerDownloadBtn" href="#" download="" class="text-slate-500 hover:text-emerald-600 transition p-1" title="下载原文件">
                     <i data-lucide="download" class="w-4 h-4"></i>
                 </a>
-                <div class="flex items-center gap-1.5 text-slate-400">
+                <div class="flex items-center gap-1.5 text-slate-500">
                     <i data-lucide="volume-2" class="w-3.5 h-3.5"></i>
-                    <input type="range" id="playerVolume" min="0" max="1" step="0.05" value="0.8" class="w-16 h-1 bg-surface-base rounded-lg appearance-none cursor-pointer accent-brand">
+                    <input type="range" id="playerVolume" min="0" max="1" step="0.05" value="0.8" class="w-16 h-1 bg-slate-200 dark:bg-[#090c10] rounded-lg appearance-none cursor-pointer accent-emerald-600">
                 </div>
             </div>
         </div>

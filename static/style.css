@@ -1,57 +1,140 @@
-/* 自定义滚动条 */
+/* ============================================================== */
+/* BiliSplit - 主题调色板 (高级浅色纸质极简 & 曜石钛金深色)       */
+/* ============================================================== */
+
+:root {
+    --bg-base: #f8fafc;
+    --bg-card: #ffffff;
+    --bg-hover: #f1f5f9;
+    --bg-active: #e2e8f0;
+    --border-color: #e2e8f0;
+    --border-subtle: #cbd5e1;
+    --text-primary: #0f172a;
+    --text-secondary: #475569;
+    --text-muted: #94a3b8;
+    --accent: #059669;
+    --accent-hover: #047857;
+    --accent-light: rgba(5, 150, 105, 0.1);
+    --input-bg: #f8fafc;
+    --shadow-card: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05);
+}
+
+html.dark {
+    --bg-base: #090c10;
+    --bg-card: #0f141f;
+    --bg-hover: #161e2e;
+    --bg-active: #1c263b;
+    --border-color: #1f2a3d;
+    --border-subtle: #2d3b55;
+    --text-primary: #f8fafc;
+    --text-secondary: #94a3b8;
+    --text-muted: #64748b;
+    --accent: #10b981;
+    --accent-hover: #059669;
+    --accent-light: rgba(16, 185, 129, 0.1);
+    --input-bg: #090c10;
+    --shadow-card: 0 4px 12px 0 rgba(0, 0, 0, 0.25);
+}
+
+/* 基础背景与文字颜色语义映射 */
+body {
+    background-color: var(--bg-base);
+    color: var(--text-primary);
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.theme-card {
+    background-color: var(--bg-card);
+    border-color: var(--border-color);
+    box-shadow: var(--shadow-card);
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.theme-base-bg {
+    background-color: var(--bg-base);
+}
+
+.theme-border {
+    border-color: var(--border-color);
+}
+
+.theme-hover:hover {
+    background-color: var(--bg-hover);
+}
+
+.theme-text-primary {
+    color: var(--text-primary);
+}
+
+.theme-text-secondary {
+    color: var(--text-secondary);
+}
+
+.theme-text-muted {
+    color: var(--text-muted);
+}
+
+/* 自定义极细滚动条 */
 ::-webkit-scrollbar {
-    width: 5px;
-    height: 5px;
+    width: 6px;
+    height: 6px;
 }
 ::-webkit-scrollbar-track {
     background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-    background: rgba(148, 163, 184, 0.2);
+    background: rgba(148, 163, 184, 0.3);
     border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-    background: rgba(148, 163, 184, 0.4);
+    background: rgba(148, 163, 184, 0.5);
 }
 
-/* 表格内行内轻量编辑输入框 */
+/* 表格内输入框 */
 .cell-input {
     background: transparent;
     border: 1px solid transparent;
     border-radius: 6px;
     padding: 3px 6px;
-    color: #e2e8f0;
+    color: var(--text-primary);
     width: 100%;
     transition: all 0.15s ease;
 }
 
 .cell-input:hover {
-    background: rgba(255, 255, 255, 0.04);
-    border-color: rgba(255, 255, 255, 0.1);
+    background: var(--bg-hover);
+    border-color: var(--border-color);
 }
 
 .cell-input:focus {
-    background: #090c10;
-    border-color: #10b981;
+    background: var(--bg-card);
+    border-color: var(--accent);
     outline: none;
+    box-shadow: 0 0 0 1px var(--accent);
 }
 
-/* 播放器滑块定制 */
+/* 音频滑块定制 */
 input[type="range"]::-webkit-slider-thumb {
     appearance: none;
-    width: 10px;
-    height: 10px;
+    width: 11px;
+    height: 11px;
     border-radius: 9999px;
-    background: #10b981;
+    background: var(--accent);
     cursor: pointer;
     transition: transform 0.1s ease;
 }
 
 input[type="range"]:hover::-webkit-slider-thumb {
-    transform: scale(1.2);
+    transform: scale(1.25);
 }
 
 /* 表格行悬浮 */
 .table-row-hover:hover {
-    background-color: rgba(255, 255, 255, 0.02);
+    background-color: var(--bg-hover);
+}
+
+/* 自定义优雅复选框 */
+input[type="checkbox"] {
+    accent-color: var(--accent);
+    cursor: pointer;
 }

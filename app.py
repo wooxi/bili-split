@@ -31,6 +31,7 @@ from audio_engine import (
 from db import (
     get_history_songs,
     delete_song_record,
+    batch_delete_song_records,
     save_or_update_task,
     get_task_by_id,
     get_recent_tasks
@@ -339,6 +340,9 @@ async def api_download_track(task_id: str, filename: str):
         
     return FileResponse(str(track_path), filename=filename)
 
+class BatchDeleteRequest(BaseModel):
+    ids: List[int]
+
 # 历史曲库持久化管理 API
 @app.get("/api/history")
 async def api_get_history(keyword: Optional[str] = Query(None), limit: int = 150):
@@ -355,6 +359,22 @@ async def api_delete_history(song_id: int):
         except Exception:
             pass
     return {"status": "ok"}
+
+@app.post("/api/history/batch-delete")
+async def api_batch_delete_history(req: BatchDeleteRequest):
+    """批量从数据库与磁盘物理删除选中的歌曲文件"""
+    if not req.ids:
+        return {"deleted_count": 0}
+    
+    file_paths = batch_delete_song_records(req.ids)
+    for p in file_paths:
+        if p and os.path.exists(p):
+            try:
+                os.remove(p)
+            except Exception as e:
+                print(f"删除物理文件异常: {p}, {e}")
+                
+    return {"deleted_count": len(req.ids)}
 
 @app.get("/api/stream-song/{filename}")
 async def api_stream_song(filename: str):
