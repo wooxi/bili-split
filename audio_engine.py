@@ -4,6 +4,7 @@ import zipfile
 import subprocess
 import requests
 import yt_dlp
+from typing import Optional
 from mutagen.id3 import ID3, TIT2, TPE1, TALB, APIC, ID3NoHeaderError
 from mutagen.flac import FLAC, Picture
 from mutagen.mp4 import MP4, MP4Cover
@@ -18,7 +19,6 @@ from config import (
 )
 from db import add_song_record
 
-# 尝试兼容静态 ffmpeg (开发或未安装系统 ffmpeg 环境时自动生效)
 try:
     import static_ffmpeg
     static_ffmpeg.add_paths()
@@ -26,23 +26,22 @@ except Exception:
     pass
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Referer": "https://www.bilibili.com/"
 }
 
-def download_bilibili_audio_direct(bvid: str, output_path: str, progress_hook=None) -> bool:
+def download_bilibili_audio_direct(bvid: str, output_path: str, progress_hook=None, cid: Optional[int] = None) -> bool:
     """
-    直连 B站 官方高保真 CDN 下载音频，彻底规避 PCDN / MCDN (mcdn.bilivideo.cn) 解析失败问题
+    直连 B站 官方高保真 CDN 下载音频，支持按 cid 定位多P分集与官方播单
     """
     try:
-        # 1. 取得 cid
-        v_url = f"https://api.bilibili.com/x/web-interface/view?bvid={bvid}"
-        v_resp = requests.get(v_url, headers=HEADERS, timeout=8).json()
-        if v_resp.get("code") != 0:
-            return False
-        cid = v_resp["data"]["cid"]
+        if not cid:
+            v_url = f"https://api.bilibili.com/x/web-interface/view?bvid={bvid}"
+            v_resp = requests.get(v_url, headers=HEADERS, timeout=8).json()
+            if v_resp.get("code") != 0:
+                return False
+            cid = v_resp["data"]["cid"]
         
-        # 2. 请求高清音频流
         p_url = f"https://api.bilibili.com/x/player/playurl?bvid={bvid}&cid={cid}&fnval=16&fnver=0&fourk=1"
         p_resp = requests.get(p_url, headers=HEADERS, timeout=8).json()
         audios = p_resp.get("data", {}).get("dash", {}).get("audio", [])
@@ -52,7 +51,6 @@ def download_bilibili_audio_direct(bvid: str, output_path: str, progress_hook=No
         best_audio = sorted(audios, key=lambda x: x.get("bandwidth", 0), reverse=True)[0]
         cand_urls = [best_audio.get("baseUrl")] + (best_audio.get("backupUrl") or [])
         
-        # 优先选用官方镜像 CDN (*.bilivideo.com)，彻底避免 mcdn.bilivideo.cn
         chosen_url = None
         for u in cand_urls:
             if u and "bilivideo.com" in u and "mcdn" not in u:
@@ -61,7 +59,6 @@ def download_bilibili_audio_direct(bvid: str, output_path: str, progress_hook=No
         if not chosen_url:
             chosen_url = cand_urls[0]
             
-        # 3. 流式分块下载
         resp = requests.get(chosen_url, headers=HEADERS, stream=True, timeout=15)
         if resp.status_code != 200:
             return False
@@ -92,13 +89,11 @@ def download_audio_source(url_or_bvid: str, output_prefix: str, progress_hook=No
         if m:
             bvid = m.group(1)
             
-    # 策略 1: B站官方高带宽 CDN 直连
     if bvid:
         direct_out = os.path.join(TEMP_DIR, f"{output_prefix}.m4a")
         if download_bilibili_audio_direct(bvid, direct_out, progress_hook=progress_hook):
             return direct_out
 
-    # 策略 2: 回退至 yt-dlp
     url = f"https://www.bilibili.com/video/{url_or_bvid}" if url_or_bvid.startswith("BV") else url_or_bvid
     out_tmpl = os.path.join(TEMP_DIR, f"{output_prefix}.%(ext)s")
     
@@ -133,7 +128,6 @@ def download_audio_source(url_or_bvid: str, output_prefix: str, progress_hook=No
         raise FileNotFoundError(f"未找到下载完成的音频文件: {filename}")
 
 def download_cover(cover_url: str, output_path: str) -> bool:
-    """下载视频封面图片用于嵌入音频元数据"""
     if not cover_url:
         return False
     try:
@@ -149,10 +143,6 @@ def download_cover(cover_url: str, output_path: str) -> bool:
     return False
 
 def tag_audio_file(file_path: str, title: str, artist: str, album: str, cover_path: str = None, fmt: str = "mp3"):
-    """
-    为音频写入规范的元数据（ID3 / FLAC / MP4 Tag）
-    规范：歌曲名、歌手、专辑名、封面，严格不包含歌词
-    """
     try:
         if fmt == "mp3":
             try:
@@ -222,11 +212,9 @@ def cut_and_export_tracks(
     use_fade: bool = ENABLE_FADE
 ) -> list:
     """
-    Linux / LXC 容器切分歌曲引擎：
-    1. 按时间轴毫秒级精准切歌
-    2. 音频优化：EBU R128 响度标准化 + 首尾 0.3s 平滑淡入淡出（消除爆音与音量忽大忽小）
-    3. 写入 ID3 封面与标准标签
-    4. 自动持久化保存至专属音乐目录 MUSIC_DIR (挂载的 NAS / Host 目录) 并记录到 SQLite
+    全形态合集处理引擎：
+    - 多P分集 / 官方播单合集：按 cid/bvid 独立拉取每集原声并优化
+    - 单视频串烧合集：从单音频中按时间戳精准切分
     """
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(MUSIC_DIR, exist_ok=True)
@@ -242,8 +230,6 @@ def cut_and_export_tracks(
         
         filename = f"{artist} - {title}.{export_format}"
         filename = "".join(c for c in filename if c not in r'\/:*?"<>|').strip()
-        
-        # 任务临时目录中的文件路径
         output_path = os.path.join(output_dir, filename)
 
         if status_callback:
@@ -254,19 +240,29 @@ def cut_and_export_tracks(
                 progress=int(((i + 1) / total_tracks) * 100)
             )
 
-        cmd = ["ffmpeg", "-y", "-ss", str(start_sec)]
-        if end_sec > start_sec:
-            cmd.extend(["-to", str(end_sec)])
-            
-        cmd.extend(["-i", source_audio])
+        track_cid = track.get("cid")
+        track_bvid = track.get("bvid") or bvid
+        is_independent_audio = bool(track_cid and (track.get("page", 0) > 1 or track.get("bvid")))
+
+        # 判断是否为多P或官方播单（独立流直接抓取）
+        if is_independent_audio:
+            track_raw_file = os.path.join(TEMP_DIR, f"part_{track_bvid}_{track_cid}.m4a")
+            if not os.path.exists(track_raw_file):
+                download_bilibili_audio_direct(track_bvid, track_raw_file, cid=track_cid)
+            input_file = track_raw_file if os.path.exists(track_raw_file) else source_audio
+            cmd = ["ffmpeg", "-y", "-i", input_file]
+        else:
+            # 单视频时间戳切分
+            cmd = ["ffmpeg", "-y", "-ss", str(start_sec)]
+            if end_sec > start_sec:
+                cmd.extend(["-to", str(end_sec)])
+            cmd.extend(["-i", source_audio])
 
         # 构建音频过滤器 (响度标准化 + 淡入淡出)
         audio_filters = []
         if use_loudnorm:
-            # 广播级 EBU R128 响度均衡
             audio_filters.append("loudnorm=I=-16:TP=-1.5:LRA=11")
         if use_fade and duration_sec > 2:
-            # 首尾 0.3s 平滑淡入淡出
             audio_filters.append("afade=t=in:ss=0:d=0.3")
             audio_filters.append(f"afade=t=out:st={duration_sec - 0.3:.2f}:d=0.3")
 
@@ -292,7 +288,6 @@ def cut_and_export_tracks(
             print(f"FFmpeg 导出错误 [{filename}]: {proc.stderr.decode('utf-8', errors='ignore')}")
             continue
 
-        # 写入规范元数据标签
         tag_audio_file(
             file_path=output_path,
             title=title,
@@ -304,18 +299,18 @@ def cut_and_export_tracks(
 
         file_size = os.path.getsize(output_path) if os.path.exists(output_path) else 0
 
-        # 1. 自动同步保存在 Linux 宿主/NAS 挂载目录 (MUSIC_DIR)
+        # 持久化至 MUSIC_DIR
         final_dest_path = str(MUSIC_DIR / filename)
         try:
             shutil.copy2(output_path, final_dest_path)
         except Exception as e:
-            print(f"复制至 MUSIC_DIR 目录失败: {e}")
+            print(f"复制至 MUSIC_DIR 失败: {e}")
 
-        # 2. 写入 SQLite 历史归档数据库
+        # 写入 SQLite
         try:
             dur_str = track.get("duration_str", "")
             add_song_record(
-                bvid=bvid,
+                bvid=track_bvid,
                 artist=artist,
                 title=title,
                 album=album_name,
@@ -324,10 +319,10 @@ def cut_and_export_tracks(
                 file_size=file_size,
                 duration_str=dur_str,
                 fmt=export_format,
-                cover_url=cover_url
+                cover_url=track.get("cover_url") or cover_url
             )
         except Exception as e:
-            print(f"写入 SQLite 历史数据库失败: {e}")
+            print(f"写入 SQLite 失败: {e}")
 
         generated_files.append({
             "filename": filename,
@@ -340,7 +335,6 @@ def cut_and_export_tracks(
     return generated_files
 
 def create_zip_archive(files: list, zip_path: str) -> str:
-    """将拆分好的歌曲文件打包为 ZIP 供一键下载"""
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
         for f in files:
             file_path = f["path"]

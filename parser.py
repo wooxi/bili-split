@@ -112,7 +112,6 @@ def clean_song_info_rule_based(raw_text: str, default_artist: str = "群星") ->
         if len(parts) == 2:
             p1, p2 = parts[0].strip(), parts[1].strip()
             if p1 and p2:
-                # 再次清理风格词
                 for sw in STYLE_WORDS:
                     p1 = p1.replace(sw, '').strip()
                     p2 = p2.replace(sw, '').strip()
@@ -122,7 +121,7 @@ def clean_song_info_rule_based(raw_text: str, default_artist: str = "群星") ->
                     title = p2
                 break
                 
-    # 9. 组合最终标题 (歌名 + 规范后缀如 (Cover xxx) 或 (Suno AI))
+    # 9. 组合最终标题 (歌名 + 规范后缀)
     all_suffixes = []
     if cover_info:
         all_suffixes.append(cover_info)
@@ -135,7 +134,6 @@ def clean_song_info_rule_based(raw_text: str, default_artist: str = "群星") ->
         if suffix_str not in title:
             title = f"{title} ({suffix_str})"
             
-    # 清理非法字符
     illegal_chars = ['\\', '/', '*', '?', '"', '<', '>', '|']
     for ch in illegal_chars:
         title = title.replace(ch, '')
@@ -150,14 +148,8 @@ def clean_song_info_rule_based(raw_text: str, default_artist: str = "群星") ->
     return artist, title
 
 def clean_song_info(raw_text: str, default_artist: str = "群星", context_desc: str = "", use_ai: bool = True) -> tuple[str, str, bool]:
-    """
-    智能清洗入口：先快速规则匹配；若不确定/不规范且允许AI，自动调用AI大模型确认
-    返回: (artist, title, is_ai_normalized)
-    """
-    # 1. 如果完全符合标准规范 (例如没有风格词干扰，有标准歌手-歌名)，直接使用规则
     rule_artist, rule_title = clean_song_info_rule_based(raw_text, default_artist=default_artist)
     
-    # 2. 如果格式不确定，尝试调用 AI
     if use_ai and needs_ai_confirmation(raw_text):
         ai_res = ai_normalize_song(raw_text, uploader=default_artist, context_desc=context_desc)
         if ai_res:
@@ -221,7 +213,12 @@ def parse_text_for_tracks(text: str, total_duration: int, default_artist: str = 
     return tracks
 
 def fetch_bilibili_video_info(bvid: str) -> Dict[str, Any]:
-    """调用 B站官方 API 获取视频详情、多P列表、简介和热评"""
+    """
+    调用 B站官方 API 获取视频详情，全面支持三种合集形态：
+    1. B站官方合集与播单 (UGC Season)
+    2. 多 P 分 P 视频选集 (Multi-page)
+    3. 单视频长音频串烧 (简介或评论区时间戳切分)
+    """
     view_url = f"https://api.bilibili.com/x/web-interface/view?bvid={bvid}"
     resp = requests.get(view_url, headers=HEADERS, timeout=10)
     data = resp.json()
@@ -240,12 +237,51 @@ def fetch_bilibili_video_info(bvid: str) -> Dict[str, Any]:
     duration = vdata.get("duration", 0)
     owner_name = vdata.get("owner", {}).get("name", "Bilibili")
     pages = vdata.get("pages", [])
+    ugc_season = vdata.get("ugc_season")
     
     tracks = []
     source_type = "unknown"
+    album_title = title
     
-    # 情况一: 多 P 视频
-    if len(pages) > 1:
+    # 形态 1: 官方合集与播单列表 (UGC Season)
+    if ugc_season:
+        sections = ugc_season.get("sections", [])
+        season_title = ugc_season.get("title") or title
+        album_title = season_title
+        source_type = "ugc_season"
+        
+        track_idx = 1
+        for sec in sections:
+            for ep in sec.get("episodes", []):
+                ep_title = ep.get("title", f"Track {track_idx}")
+                ep_bvid = ep.get("bvid", bvid)
+                ep_cid = ep.get("cid")
+                ep_dur = ep.get("arc", {}).get("duration") or ep.get("page", {}).get("duration", 0)
+                ep_pic = ep.get("arc", {}).get("pic") or pic
+                if ep_pic and ep_pic.startswith("//"):
+                    ep_pic = "https:" + ep_pic
+                    
+                artist, clean_title, is_ai = clean_song_info(ep_title, default_artist=owner_name, context_desc=desc)
+                tracks.append({
+                    "id": track_idx,
+                    "artist": artist,
+                    "title": clean_title,
+                    "raw_title": ep_title,
+                    "bvid": ep_bvid,
+                    "cid": ep_cid,
+                    "page": ep.get("page", {}).get("page", 1),
+                    "cover_url": ep_pic,
+                    "start_sec": 0,
+                    "end_sec": ep_dur,
+                    "start_str": "00:00",
+                    "end_str": seconds_to_time_str(ep_dur),
+                    "duration_str": seconds_to_time_str(ep_dur),
+                    "is_ai": is_ai
+                })
+                track_idx += 1
+                
+    # 形态 2: 多 P 选集视频 (同一 BV 号下包含 P1 ~ Pn)
+    elif len(pages) > 1:
         source_type = "multi_page"
         for i, page in enumerate(pages):
             p_title = page.get("part", f"Track {i+1}")
@@ -256,8 +292,10 @@ def fetch_bilibili_video_info(bvid: str) -> Dict[str, Any]:
                 "artist": artist,
                 "title": clean_title,
                 "raw_title": p_title,
-                "page": page.get("page", i + 1),
+                "bvid": bvid,
                 "cid": page.get("cid"),
+                "page": page.get("page", i + 1),
+                "cover_url": pic,
                 "start_sec": 0,
                 "end_sec": p_dur,
                 "start_str": "00:00",
@@ -266,14 +304,14 @@ def fetch_bilibili_video_info(bvid: str) -> Dict[str, Any]:
                 "is_ai": is_ai
             })
             
-    # 情况二: 简介时间戳
+    # 形态 3A: 单视频长音频串烧 - 简介自带时间戳
     if not tracks and desc:
         desc_tracks = parse_text_for_tracks(desc, duration, default_artist=owner_name, context_desc=desc)
         if len(desc_tracks) >= 2:
             tracks = desc_tracks
             source_type = "description"
             
-    # 情况三: 评论区课代表打点
+    # 形态 3B: 单视频长音频串烧 - 评论区课代表置顶/热评打点
     if not tracks:
         try:
             reply_url = f"https://api.bilibili.com/x/v2/reply/main?type=1&oid={aid}&mode=3"
@@ -295,7 +333,7 @@ def fetch_bilibili_video_info(bvid: str) -> Dict[str, Any]:
         except Exception as e:
             print(f"解析评论区时间轴异常: {e}")
             
-    # 情况四: 单首歌曲或翻唱视频
+    # 单曲兜底
     if not tracks:
         artist, clean_title, is_ai = clean_song_info(title, default_artist=owner_name, context_desc=desc)
         tracks = [{
@@ -303,6 +341,10 @@ def fetch_bilibili_video_info(bvid: str) -> Dict[str, Any]:
             "artist": artist,
             "title": clean_title,
             "raw_title": title,
+            "bvid": bvid,
+            "cid": vdata.get("cid"),
+            "page": 1,
+            "cover_url": pic,
             "start_sec": 0,
             "end_sec": duration,
             "start_str": "00:00",
@@ -316,6 +358,7 @@ def fetch_bilibili_video_info(bvid: str) -> Dict[str, Any]:
         "bvid": bvid,
         "aid": aid,
         "title": title,
+        "album_title": album_title,
         "uploader": owner_name,
         "cover_url": pic,
         "duration": duration,
