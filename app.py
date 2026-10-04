@@ -18,10 +18,12 @@ from config import (
     TEMP_DIR,
     DOWNLOADS_DIR,
     ENABLE_LOUDNORM,
-    ENABLE_FADE
+    ENABLE_FADE,
+    load_settings,
+    save_settings
 )
 from parser import extract_bvid, fetch_bilibili_video_info, clean_song_info_rule_based
-from ai_service import ai_normalize_song
+from ai_service import ai_normalize_song, test_ai_connection
 from audio_engine import (
     download_audio_source,
     download_cover,
@@ -84,16 +86,56 @@ class ProcessRequest(BaseModel):
     use_loudnorm: Optional[bool] = ENABLE_LOUDNORM
     use_fade: Optional[bool] = ENABLE_FADE
 
+class SettingsUpdateRequest(BaseModel):
+    default_format: Optional[str] = None
+    enable_loudnorm: Optional[bool] = None
+    enable_fade: Optional[bool] = None
+    fade_duration: Optional[float] = None
+    ai_api_base: Optional[str] = None
+    ai_api_key: Optional[str] = None
+    ai_model: Optional[str] = None
+    skip_existing: Optional[bool] = None
+    tracklist_layout: Optional[str] = None
+
+class TestAiRequest(BaseModel):
+    ai_api_base: str
+    ai_api_key: str
+    ai_model: str
+
 @app.get("/api/config")
 async def api_get_config():
-    """获取当前服务配置与运行状态"""
+    """获取当前服务配置与可编辑参数"""
+    cfg = load_settings()
+    # 遮罩敏感 key 供展示，若为空则显示空
+    key = cfg.get("ai_api_key", "")
+    masked_key = (key[:6] + "..." + key[-4:]) if len(key) > 12 else key
     return {
         "music_dir": str(MUSIC_DIR),
-        "enable_loudnorm": ENABLE_LOUDNORM,
-        "enable_fade": ENABLE_FADE,
-        "default_format": "flac",
-        "platform": os.name
+        "data_dir": str(BASE_DIR / "data"),
+        "platform": os.name,
+        "default_format": cfg.get("default_format", "flac"),
+        "enable_loudnorm": cfg.get("enable_loudnorm", True),
+        "enable_fade": cfg.get("enable_fade", True),
+        "fade_duration": cfg.get("fade_duration", 0.3),
+        "ai_api_base": cfg.get("ai_api_base", "http://192.168.100.4:8030/v1"),
+        "ai_api_key": key,  # 原样返回以便前端表单直接修改
+        "ai_model": cfg.get("ai_model", "gemini-3.8-flash"),
+        "skip_existing": cfg.get("skip_existing", True),
+        "tracklist_layout": cfg.get("tracklist_layout", "double")
     }
+
+@app.post("/api/config")
+async def api_save_config(req: SettingsUpdateRequest):
+    """保存用户在设置页面修改的配置参数"""
+    update_data = {k: v for k, v in req.model_dump().items() if v is not None}
+    saved = save_settings(update_data)
+    return {"status": "ok", "config": saved}
+
+@app.post("/api/config/test-ai")
+async def api_test_ai(req: TestAiRequest):
+    """测试指定 AI 网关与模型的连通性"""
+    res = test_ai_connection(req.ai_api_base, req.ai_api_key, req.ai_model)
+    return res
 
 @app.get("/api/cover-proxy")
 async def cover_proxy(url: str):

@@ -1,5 +1,5 @@
 // ==============================================================
-// BiliSplit - 前端主控制逻辑 (系统级工作站架构 + 主题引擎 + 批量管理)
+// BiliSplit - 前端主控制逻辑 (系统级工作站架构 + 双列/表格排版 + 交互设置)
 // ==============================================================
 
 // 全局应用状态
@@ -10,6 +10,7 @@ let currentPlaylist = [];
 let currentTrackIndex = -1;
 let libraryData = [];
 let selectedSongIds = new Set();
+let tracklistLayout = 'double'; // 'double' 双列网格 (大合集推荐) 或 'single' 单列表格
 
 // DOM 引用 - 导航与视图
 const navWorkstation = document.getElementById('navWorkstation');
@@ -26,8 +27,6 @@ const viewSettings = document.getElementById('viewSettings');
 const viewTitle = document.getElementById('viewTitle');
 
 const themeToggleBtn = document.getElementById('themeToggleBtn');
-const themeIcon = document.getElementById('themeIcon');
-
 const quickTaskIndicator = document.getElementById('quickTaskIndicator');
 const quickTaskText = document.getElementById('quickTaskText');
 const sidebarMusicPath = document.getElementById('sidebarMusicPath');
@@ -49,8 +48,14 @@ const formatSelect = document.getElementById('formatSelect');
 const loudnormToggle = document.getElementById('loudnormToggle');
 const fadeToggle = document.getElementById('fadeToggle');
 
+const trackGridContainer = document.getElementById('trackGridContainer');
+const trackTableContainer = document.getElementById('trackTableContainer');
 const trackTableBody = document.getElementById('trackTableBody');
 const trackCountBadge = document.getElementById('trackCountBadge');
+const trackFilterInput = document.getElementById('trackFilterInput');
+const layoutDoubleBtn = document.getElementById('layoutDoubleBtn');
+const layoutSingleBtn = document.getElementById('layoutSingleBtn');
+
 const aiNormalizeAllBtn = document.getElementById('aiNormalizeAllBtn');
 const swapAllBtn = document.getElementById('swapAllBtn');
 const addTrackBtn = document.getElementById('addTrackBtn');
@@ -79,7 +84,20 @@ const batchCountText = document.getElementById('batchCountText');
 const batchDeselectBtn = document.getElementById('batchDeselectBtn');
 const batchDeleteBtn = document.getElementById('batchDeleteBtn');
 
-// DOM 引用 - 系统配置
+// DOM 引用 - 系统配置表单
+const cfgDefaultFormat = document.getElementById('cfgDefaultFormat');
+const cfgDefaultLayout = document.getElementById('cfgDefaultLayout');
+const cfgEnableLoudnorm = document.getElementById('cfgEnableLoudnorm');
+const cfgEnableFade = document.getElementById('cfgEnableFade');
+const cfgFadeDuration = document.getElementById('cfgFadeDuration');
+const cfgSkipExisting = document.getElementById('cfgSkipExisting');
+const cfgAiBase = document.getElementById('cfgAiBase');
+const cfgAiKey = document.getElementById('cfgAiKey');
+const cfgAiModel = document.getElementById('cfgAiModel');
+const toggleAiKeyVisibility = document.getElementById('toggleAiKeyVisibility');
+const testAiBtn = document.getElementById('testAiBtn');
+const aiTestFeedback = document.getElementById('aiTestFeedback');
+const saveConfigBtn = document.getElementById('saveConfigBtn');
 const cfgMusicDir = document.getElementById('cfgMusicDir');
 
 // DOM 引用 - 全局常驻播放器
@@ -98,7 +116,7 @@ const playerVolume = document.getElementById('playerVolume');
 const playerDownloadBtn = document.getElementById('playerDownloadBtn');
 
 // -------------------------------------------------------------
-// 1. 主题管理引擎 (默认高级浅色纸质极简，支持一键切换曜石深色)
+// 1. 主题引擎 (默认高级浅色纸质极简，支持一键切换曜石深色)
 // -------------------------------------------------------------
 function initTheme() {
     const savedTheme = localStorage.getItem('theme') || 'light';
@@ -136,12 +154,23 @@ async function init() {
     try {
         const resp = await fetch('/api/config');
         const cfg = await resp.json();
+        
+        // 侧边栏与表单绑定
         if (sidebarMusicPath) sidebarMusicPath.innerText = cfg.music_dir;
         if (cfgMusicDir) cfgMusicDir.innerText = cfg.music_dir;
         if (sidebarPlatformText) sidebarPlatformText.innerText = cfg.platform === 'posix' ? 'Linux 容器' : 'Windows';
+        
+        // 工作台参数同步
         if (loudnormToggle) loudnormToggle.checked = cfg.enable_loudnorm;
         if (fadeToggle) fadeToggle.checked = cfg.enable_fade;
         if (formatSelect) formatSelect.value = cfg.default_format || 'flac';
+
+        tracklistLayout = cfg.tracklist_layout || 'double';
+        updateLayoutButtons();
+
+        // 系统配置面板参数同步
+        populateSettingsForm(cfg);
+
     } catch (e) {
         console.error('加载系统配置异常:', e);
     }
@@ -157,7 +186,7 @@ const views = {
     workstation: { el: viewWorkstation, btn: navWorkstation, title: '音频提取工作台' },
     tasks: { el: viewTasks, btn: navTasks, title: '任务执行历史与断点队列' },
     library: { el: viewLibrary, btn: navLibrary, title: '持久化媒体曲库 (/music)' },
-    settings: { el: viewSettings, btn: navSettings, title: '系统环境与持久化参数' }
+    settings: { el: viewSettings, btn: navSettings, title: '系统参数与运行设置' }
 };
 
 function switchView(target) {
@@ -232,7 +261,7 @@ parseBtn.addEventListener('click', async () => {
 
         currentVideo = data;
         renderVideoHeader(data);
-        renderTrackTable(data.tracks);
+        renderTrackList();
 
         workstationEmpty.classList.add('hidden');
         editorPanel.classList.remove('hidden');
@@ -265,16 +294,125 @@ function renderVideoHeader(data) {
     sourceBadge.innerText = sourceMap[data.source_type] || '自动提取';
 }
 
-function renderTrackTable(tracks) {
-    trackTableBody.innerHTML = '';
-    trackCountBadge.innerText = `${tracks.length} 首合集单曲`;
+// -------------------------------------------------------------
+// 排版切换 (双列卡片 vs 单列详细表格)
+// -------------------------------------------------------------
+function updateLayoutButtons() {
+    if (tracklistLayout === 'double') {
+        layoutDoubleBtn.className = 'px-2 py-0.5 rounded bg-white dark:bg-[#1f2a3d] text-slate-900 dark:text-white shadow-sm font-medium transition cursor-pointer flex items-center gap-1 text-[11px]';
+        layoutSingleBtn.className = 'px-2 py-0.5 rounded text-slate-500 hover:text-slate-900 dark:hover:text-white transition cursor-pointer flex items-center gap-1 text-[11px]';
+    } else {
+        layoutSingleBtn.className = 'px-2 py-0.5 rounded bg-white dark:bg-[#1f2a3d] text-slate-900 dark:text-white shadow-sm font-medium transition cursor-pointer flex items-center gap-1 text-[11px]';
+        layoutDoubleBtn.className = 'px-2 py-0.5 rounded text-slate-500 hover:text-slate-900 dark:hover:text-white transition cursor-pointer flex items-center gap-1 text-[11px]';
+    }
+}
 
-    tracks.forEach((track, idx) => {
+layoutDoubleBtn.addEventListener('click', () => {
+    tracklistLayout = 'double';
+    updateLayoutButtons();
+    renderTrackList();
+});
+
+layoutSingleBtn.addEventListener('click', () => {
+    tracklistLayout = 'single';
+    updateLayoutButtons();
+    renderTrackList();
+});
+
+// 工作台内实时过滤搜索
+if (trackFilterInput) {
+    trackFilterInput.addEventListener('input', () => {
+        renderTrackList();
+    });
+}
+
+function renderTrackList() {
+    if (!currentVideo || !currentVideo.tracks) return;
+
+    const kw = (trackFilterInput ? trackFilterInput.value.trim() : '').toLowerCase();
+    const tracksToRender = currentVideo.tracks.filter(t => {
+        if (!kw) return true;
+        return (t.title || '').toLowerCase().includes(kw) || (t.artist || '').toLowerCase().includes(kw);
+    });
+
+    trackCountBadge.innerText = `${tracksToRender.length} 首曲目`;
+
+    if (tracklistLayout === 'double') {
+        trackGridContainer.classList.remove('hidden');
+        trackTableContainer.classList.add('hidden');
+        renderDoubleColumnGrid(tracksToRender);
+    } else {
+        trackGridContainer.classList.add('hidden');
+        trackTableContainer.classList.remove('hidden');
+        renderSingleColumnTable(tracksToRender);
+    }
+
+    lucide.createIcons();
+}
+
+// 渲染双列紧凑网格 (专为大合集设计，横向不浪费、纵向减半)
+function renderDoubleColumnGrid(tracks) {
+    trackGridContainer.innerHTML = '';
+    if (tracks.length === 0) {
+        trackGridContainer.innerHTML = `<div class="col-span-full py-8 text-center text-slate-400 text-xs font-mono">未搜索到匹配曲目</div>`;
+        return;
+    }
+
+    tracks.forEach((track) => {
+        const card = document.createElement('div');
+        card.className = 'track-card flex items-center justify-between gap-2 shadow-sm';
+
+        card.innerHTML = `
+            <div class="flex items-center gap-1.5 flex-1 min-w-0">
+                <span class="font-mono text-slate-400 text-[11px] w-6 text-center flex-shrink-0">${track.id}</span>
+                <div class="flex flex-col flex-1 min-w-0 gap-0.5">
+                    <div class="flex items-center gap-1">
+                        <input type="text" class="cell-input title-input font-medium text-slate-900 dark:text-white" value="${track.title || ''}" placeholder="歌名">
+                        ${track.is_ai ? '<span class="text-[9px] px-1 rounded bg-purple-500/10 text-purple-700 dark:text-purple-300 border border-purple-500/20 font-mono flex-shrink-0">AI</span>' : ''}
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <input type="text" class="cell-input artist-input text-emerald-600 dark:text-emerald-400 text-[11px] font-medium" value="${track.artist || ''}" placeholder="歌手">
+                        <div class="flex items-center gap-0.5 font-mono text-[10px] text-slate-400 flex-shrink-0">
+                            <input type="text" class="cell-input start-input w-12 text-center" value="${track.start_str || secToStr(track.start_sec)}">
+                            <span>~</span>
+                            <input type="text" class="cell-input end-input w-12 text-center" value="${track.end_str || secToStr(track.end_sec)}">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-1 flex-shrink-0">
+                <button class="ai-single-btn p-1 hover:bg-purple-500/20 text-purple-600 dark:text-purple-400 rounded transition cursor-pointer" title="AI 校对">
+                    <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+                </button>
+                <button class="swap-single-btn p-1 hover:bg-slate-100 dark:hover:bg-[#161e2e] text-slate-400 hover:text-slate-900 dark:hover:text-white rounded transition cursor-pointer" title="互换歌手与歌名">
+                    <i data-lucide="arrow-left-right" class="w-3.5 h-3.5"></i>
+                </button>
+                <button class="del-single-btn p-1 hover:bg-rose-500/20 text-slate-400 hover:text-rose-500 rounded transition cursor-pointer" title="删除">
+                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                </button>
+            </div>
+        `;
+
+        bindTrackCardEvents(card, track);
+        trackGridContainer.appendChild(card);
+    });
+}
+
+// 渲染传统单列表格
+function renderSingleColumnTable(tracks) {
+    trackTableBody.innerHTML = '';
+    if (tracks.length === 0) {
+        trackTableBody.innerHTML = `<tr><td colspan="6" class="py-8 text-center text-slate-400 text-xs font-mono">未搜索到匹配曲目</td></tr>`;
+        return;
+    }
+
+    tracks.forEach((track) => {
         const tr = document.createElement('tr');
         tr.className = 'table-row-hover transition';
 
         tr.innerHTML = `
-            <td class="py-2.5 px-3 text-center font-mono text-slate-400 dark:text-slate-500 text-[11px]">${idx + 1}</td>
+            <td class="py-2.5 px-3 text-center font-mono text-slate-400 text-[11px]">${track.id}</td>
             <td class="py-1.5 px-2">
                 <input type="text" class="cell-input artist-input font-medium text-emerald-600 dark:text-emerald-400" value="${track.artist || ''}">
             </td>
@@ -287,7 +425,7 @@ function renderTrackTable(tracks) {
             <td class="py-1.5 px-2 text-center">
                 <div class="flex items-center justify-center gap-1 font-mono text-[11px]">
                     <input type="text" class="cell-input start-input text-center w-14" value="${track.start_str || secToStr(track.start_sec)}">
-                    <span class="text-slate-400 dark:text-slate-600">~</span>
+                    <span class="text-slate-400">~</span>
                     <input type="text" class="cell-input end-input text-center w-14" value="${track.end_str || secToStr(track.end_sec)}">
                 </div>
             </td>
@@ -296,89 +434,92 @@ function renderTrackTable(tracks) {
             </td>
             <td class="py-2.5 px-3 text-right">
                 <div class="flex items-center justify-end gap-1">
-                    <button class="ai-single-btn p-1 hover:bg-purple-500/20 rounded text-purple-600 dark:text-purple-400 transition" title="AI 校对">
+                    <button class="ai-single-btn p-1 hover:bg-purple-500/20 rounded text-purple-600 dark:text-purple-400 transition cursor-pointer" title="AI 校对">
                         <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
                     </button>
-                    <button class="swap-single-btn p-1 hover:bg-slate-100 dark:hover:bg-[#161e2e] rounded text-slate-500 hover:text-slate-900 dark:hover:text-white transition" title="互换歌手与歌名">
+                    <button class="swap-single-btn p-1 hover:bg-slate-100 dark:hover:bg-[#161e2e] rounded text-slate-400 hover:text-slate-900 dark:hover:text-white transition cursor-pointer" title="互换歌手与歌名">
                         <i data-lucide="arrow-left-right" class="w-3.5 h-3.5"></i>
                     </button>
-                    <button class="del-single-btn p-1 hover:bg-rose-500/20 rounded text-slate-400 hover:text-rose-500 transition" title="删除">
+                    <button class="del-single-btn p-1 hover:bg-rose-500/20 rounded text-slate-400 hover:text-rose-500 transition cursor-pointer" title="删除">
                         <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
                     </button>
                 </div>
             </td>
         `;
 
-        const artistInput = tr.querySelector('.artist-input');
-        const titleInput = tr.querySelector('.title-input');
-        const startInput = tr.querySelector('.start-input');
-        const endInput = tr.querySelector('.end-input');
-        const durationCell = tr.querySelector('.duration-cell');
-
-        artistInput.addEventListener('input', (e) => { track.artist = e.target.value.trim(); });
-        titleInput.addEventListener('input', (e) => { track.title = e.target.value.trim(); });
-
-        const syncTimes = () => {
-            const s = strToSec(startInput.value);
-            const e = strToSec(endInput.value);
-            track.start_sec = s;
-            track.end_sec = e;
-            track.start_str = startInput.value;
-            track.end_str = endInput.value;
-            durationCell.innerText = secToStr(Math.max(0, e - s));
-        };
-        startInput.addEventListener('blur', syncTimes);
-        endInput.addEventListener('blur', syncTimes);
-
-        // 单曲 AI 规范
-        tr.querySelector('.ai-single-btn').addEventListener('click', async (e) => {
-            const btn = e.currentTarget;
-            btn.innerHTML = `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i>`;
-            lucide.createIcons();
-            try {
-                const resp = await fetch('/api/ai-normalize', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        title: track.raw_title || `${track.artist} - ${track.title}`,
-                        uploader: currentVideo.uploader,
-                        desc: currentVideo.title
-                    })
-                });
-                const res = await resp.json();
-                if (res.artist && res.title) {
-                    track.artist = res.artist;
-                    track.title = res.title;
-                    track.is_ai = res.is_ai;
-                    renderTrackTable(currentVideo.tracks);
-                }
-            } catch (err) {
-                alert('AI 规范化失败');
-            } finally {
-                btn.innerHTML = `<i data-lucide="sparkles" class="w-3.5 h-3.5"></i>`;
-                lucide.createIcons();
-            }
-        });
-
-        // 互换
-        tr.querySelector('.swap-single-btn').addEventListener('click', () => {
-            const t = track.artist;
-            track.artist = track.title;
-            track.title = t;
-            artistInput.value = track.artist;
-            titleInput.value = track.title;
-        });
-
-        // 删除
-        tr.querySelector('.del-single-btn').addEventListener('click', () => {
-            currentVideo.tracks.splice(idx, 1);
-            renderTrackTable(currentVideo.tracks);
-        });
-
+        bindTrackCardEvents(tr, track);
         trackTableBody.appendChild(tr);
     });
+}
 
-    lucide.createIcons();
+function bindTrackCardEvents(container, track) {
+    const artistInput = container.querySelector('.artist-input');
+    const titleInput = container.querySelector('.title-input');
+    const startInput = container.querySelector('.start-input');
+    const endInput = container.querySelector('.end-input');
+
+    artistInput.addEventListener('input', (e) => { track.artist = e.target.value.trim(); });
+    titleInput.addEventListener('input', (e) => { track.title = e.target.value.trim(); });
+
+    const syncTimes = () => {
+        const s = strToSec(startInput.value);
+        const e = strToSec(endInput.value);
+        track.start_sec = s;
+        track.end_sec = e;
+        track.start_str = startInput.value;
+        track.end_str = endInput.value;
+        track.duration_str = secToStr(Math.max(0, e - s));
+    };
+    startInput.addEventListener('blur', syncTimes);
+    endInput.addEventListener('blur', syncTimes);
+
+    // 单曲 AI 规范
+    container.querySelector('.ai-single-btn').addEventListener('click', async (e) => {
+        const btn = e.currentTarget;
+        btn.innerHTML = `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i>`;
+        lucide.createIcons();
+        try {
+            const resp = await fetch('/api/ai-normalize', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    title: track.raw_title || `${track.artist} - ${track.title}`,
+                    uploader: currentVideo.uploader,
+                    desc: currentVideo.title
+                })
+            });
+            const res = await resp.json();
+            if (res.artist && res.title) {
+                track.artist = res.artist;
+                track.title = res.title;
+                track.is_ai = res.is_ai;
+                renderTrackList();
+            }
+        } catch (err) {
+            alert('AI 规范化失败');
+        } finally {
+            btn.innerHTML = `<i data-lucide="sparkles" class="w-3.5 h-3.5"></i>`;
+            lucide.createIcons();
+        }
+    });
+
+    // 互换
+    container.querySelector('.swap-single-btn').addEventListener('click', () => {
+        const t = track.artist;
+        track.artist = track.title;
+        track.title = t;
+        artistInput.value = track.artist;
+        titleInput.value = track.title;
+    });
+
+    // 删除
+    container.querySelector('.del-single-btn').addEventListener('click', () => {
+        const realIdx = currentVideo.tracks.findIndex(item => item.id === track.id);
+        if (realIdx !== -1) {
+            currentVideo.tracks.splice(realIdx, 1);
+            renderTrackList();
+        }
+    });
 }
 
 // 批量 AI 规范
@@ -406,7 +547,7 @@ aiNormalizeAllBtn.addEventListener('click', async () => {
                 track.is_ai = res.is_ai;
             }
         }
-        renderTrackTable(currentVideo.tracks);
+        renderTrackList();
     } catch (e) {
         alert('批量处理失败');
     } finally {
@@ -424,7 +565,7 @@ swapAllBtn.addEventListener('click', () => {
         t.artist = t.title;
         t.title = tmp;
     });
-    renderTrackTable(currentVideo.tracks);
+    renderTrackList();
 });
 
 // 加曲
@@ -443,7 +584,7 @@ addTrackBtn.addEventListener('click', () => {
         end_str: secToStr(e),
         duration_str: secToStr(180)
     });
-    renderTrackTable(currentVideo.tracks);
+    renderTrackList();
 });
 
 // 执行切歌处理
@@ -485,7 +626,7 @@ startProcessBtn.addEventListener('click', async () => {
 });
 
 // -------------------------------------------------------------
-// 6. 任务轮询与断点续提机制 (刷新页面不丢失)
+// 6. 任务轮询与断点续提机制
 // -------------------------------------------------------------
 function startTaskPolling(taskId) {
     if (pollTimer) clearInterval(pollTimer);
@@ -534,7 +675,6 @@ function stopTaskPolling() {
     navActiveTaskBadge.classList.add('hidden');
 }
 
-// 页面载入时自动检测是否有正在执行的后台任务
 async function checkActiveTasksOnLoad() {
     try {
         const resp = await fetch('/api/tasks/recent');
@@ -712,7 +852,6 @@ function updateBatchBar() {
         batchActionBar.classList.add('hidden');
     }
 
-    // 更新全选框状态
     const totalVisible = document.querySelectorAll('.song-checkbox').length;
     if (totalVisible > 0 && count === totalVisible) {
         selectAllCheckbox.checked = true;
@@ -726,7 +865,6 @@ function updateBatchBar() {
     }
 }
 
-// 全选/取消全选
 selectAllCheckbox.addEventListener('change', (e) => {
     const isChecked = e.target.checked;
     document.querySelectorAll('.song-checkbox').forEach(cb => {
@@ -741,14 +879,12 @@ selectAllCheckbox.addEventListener('change', (e) => {
     updateBatchBar();
 });
 
-// 取消选择按钮
 batchDeselectBtn.addEventListener('click', () => {
     selectedSongIds.clear();
     document.querySelectorAll('.song-checkbox').forEach(cb => { cb.checked = false; });
     updateBatchBar();
 });
 
-// 一键批量删除
 batchDeleteBtn.addEventListener('click', async () => {
     const count = selectedSongIds.size;
     if (count === 0) return;
@@ -823,7 +959,7 @@ async function loadLibrary(keyword = '') {
                     <input type="checkbox" class="song-checkbox rounded border-slate-300 dark:border-slate-700 text-emerald-600 cursor-pointer" data-id="${song.id}" ${isChecked ? 'checked' : ''}>
                 </td>
                 <td class="py-2.5 px-2 text-center font-mono text-slate-400 dark:text-slate-500 text-[11px]">${idx + 1}</td>
-                <td class="py-2 px-3">
+                <td class="py-2.5 px-3">
                     <div class="flex items-center gap-2.5">
                         <button class="play-lib-btn w-6 h-6 rounded bg-slate-100 dark:bg-[#090c10] hover:bg-slate-200 dark:hover:bg-[#1c263b] border border-slate-200 dark:border-[#1f2a3d] flex items-center justify-center text-slate-700 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-400 transition cursor-pointer flex-shrink-0 shadow-sm" title="播放此曲">
                             <i data-lucide="play" class="w-3 h-3 fill-current ml-0.5"></i>
@@ -834,15 +970,15 @@ async function loadLibrary(keyword = '') {
                         </div>
                     </div>
                 </td>
-                <td class="py-2 px-3 text-slate-600 dark:text-slate-400 truncate text-[11px]">${song.album || '-'}</td>
-                <td class="py-2 px-3 text-center">
+                <td class="py-2.5 px-3 text-slate-600 dark:text-slate-400 truncate text-[11px]">${song.album || '-'}</td>
+                <td class="py-2.5 px-3 text-center">
                     <span class="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-slate-100 dark:bg-[#090c10] border border-slate-200 dark:border-[#1f2a3d] text-slate-600 dark:text-slate-400 font-medium">
                         ${song.format || 'flac'}
                     </span>
                 </td>
-                <td class="py-2 px-3 text-center font-mono text-slate-500 text-[11px]">${sizeMb} M</td>
-                <td class="py-2 px-3 text-center font-mono text-slate-500 text-[11px]">${dateStr}</td>
-                <td class="py-2 px-3 text-right">
+                <td class="py-2.5 px-3 text-center font-mono text-slate-500 text-[11px]">${sizeMb} M</td>
+                <td class="py-2.5 px-3 text-center font-mono text-slate-500 text-[11px]">${dateStr}</td>
+                <td class="py-2.5 px-3 text-right">
                     <div class="flex items-center justify-end gap-1.5">
                         <a href="${streamUrl}" download="${song.filename}" class="p-1 text-slate-400 hover:text-emerald-600 transition" title="下载文件">
                             <i data-lucide="download" class="w-3.5 h-3.5"></i>
@@ -854,7 +990,6 @@ async function loadLibrary(keyword = '') {
                 </td>
             `;
 
-            // 复选框变更
             const cb = tr.querySelector('.song-checkbox');
             cb.addEventListener('change', (e) => {
                 const id = parseInt(e.target.dataset.id);
@@ -866,12 +1001,10 @@ async function loadLibrary(keyword = '') {
                 updateBatchBar();
             });
 
-            // 绑定各自专属独立播放
             tr.querySelector('.play-lib-btn').addEventListener('click', () => {
                 playTrackFromList(libPlaylist, idx);
             });
 
-            // 绑定单个删除
             tr.querySelector('.del-lib-btn').addEventListener('click', async (e) => {
                 if (!confirm(`确认彻底删除歌曲 "${song.title}"？文件将从磁盘物理移除。`)) return;
                 const id = e.currentTarget.dataset.id;
@@ -897,7 +1030,125 @@ async function loadLibrary(keyword = '') {
 }
 
 // -------------------------------------------------------------
-// 9. 全局常驻播放器 (完美按键状态切换 + 左右切歌 + 自动连播)
+// 9. 系统配置面板交互管理 (支持真实修改、保存与测试 AI)
+// -------------------------------------------------------------
+function populateSettingsForm(cfg) {
+    if (cfgDefaultFormat) cfgDefaultFormat.value = cfg.default_format || 'flac';
+    if (cfgDefaultLayout) cfgDefaultLayout.value = cfg.tracklist_layout || 'double';
+    if (cfgEnableLoudnorm) cfgEnableLoudnorm.checked = cfg.enable_loudnorm !== false;
+    if (cfgEnableFade) cfgEnableFade.checked = cfg.enable_fade !== false;
+    if (cfgFadeDuration) cfgFadeDuration.value = String(cfg.fade_duration || 0.3);
+    if (cfgSkipExisting) cfgSkipExisting.checked = cfg.skip_existing !== false;
+    if (cfgAiBase) cfgAiBase.value = cfg.ai_api_base || '';
+    if (cfgAiKey) cfgAiKey.value = cfg.ai_api_key || '';
+    if (cfgAiModel) cfgAiModel.value = cfg.ai_model || 'gemini-3.8-flash';
+}
+
+// 密码明暗切换
+if (toggleAiKeyVisibility && cfgAiKey) {
+    toggleAiKeyVisibility.addEventListener('click', () => {
+        const isPass = cfgAiKey.type === 'password';
+        cfgAiKey.type = isPass ? 'text' : 'password';
+        toggleAiKeyVisibility.innerHTML = `<i data-lucide="${isPass ? 'eye-off' : 'eye'}" class="w-3.5 h-3.5"></i>`;
+        lucide.createIcons();
+    });
+}
+
+// 测试 AI 连通性
+if (testAiBtn) {
+    testAiBtn.addEventListener('click', async () => {
+        testAiBtn.disabled = true;
+        testAiBtn.innerHTML = `<i data-lucide="loader-2" class="w-3 h-3 animate-spin"></i><span>测试中...</span>`;
+        lucide.createIcons();
+
+        aiTestFeedback.classList.remove('hidden');
+        aiTestFeedback.className = 'p-2.5 rounded-lg text-xs font-mono bg-slate-100 dark:bg-[#161e2e] text-slate-500';
+        aiTestFeedback.innerText = '正在向 AI 大模型网关发送握手验证...';
+
+        try {
+            const resp = await fetch('/api/config/test-ai', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    ai_api_base: cfgAiBase.value.trim(),
+                    ai_api_key: cfgAiKey.value.trim(),
+                    ai_model: cfgAiModel.value.trim()
+                })
+            });
+            const res = await resp.json();
+            if (res.ok) {
+                aiTestFeedback.className = 'p-2.5 rounded-lg text-xs font-mono bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400';
+                aiTestFeedback.innerText = `✓ ${res.message}`;
+            } else {
+                aiTestFeedback.className = 'p-2.5 rounded-lg text-xs font-mono bg-rose-50 dark:bg-rose-950/40 border border-rose-500/30 text-rose-600 dark:text-rose-400';
+                aiTestFeedback.innerText = `✗ ${res.message}`;
+            }
+        } catch (e) {
+            aiTestFeedback.className = 'p-2.5 rounded-lg text-xs font-mono bg-rose-50 dark:bg-rose-950/40 border border-rose-500/30 text-rose-600 dark:text-rose-400';
+            aiTestFeedback.innerText = `✗ 网络请求错误: ${e.message}`;
+        } finally {
+            testAiBtn.disabled = false;
+            testAiBtn.innerHTML = `<i data-lucide="zap" class="w-3 h-3 text-purple-600"></i><span>测试连接</span>`;
+            lucide.createIcons();
+        }
+    });
+}
+
+// 保存系统配置
+if (saveConfigBtn) {
+    saveConfigBtn.addEventListener('click', async () => {
+        saveConfigBtn.disabled = true;
+        saveConfigBtn.innerHTML = `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i><span>正在保存...</span>`;
+        lucide.createIcons();
+
+        try {
+            const payload = {
+                default_format: cfgDefaultFormat.value,
+                tracklist_layout: cfgDefaultLayout.value,
+                enable_loudnorm: cfgEnableLoudnorm.checked,
+                enable_fade: cfgEnableFade.checked,
+                fade_duration: parseFloat(cfgFadeDuration.value) || 0.3,
+                skip_existing: cfgSkipExisting.checked,
+                ai_api_base: cfgAiBase.value.trim(),
+                ai_api_key: cfgAiKey.value.trim(),
+                ai_model: cfgAiModel.value.trim()
+            };
+
+            const resp = await fetch('/api/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (resp.ok) {
+                // 同步工作台状态
+                tracklistLayout = payload.tracklist_layout;
+                updateLayoutButtons();
+                renderTrackList();
+                if (loudnormToggle) loudnormToggle.checked = payload.enable_loudnorm;
+                if (fadeToggle) fadeToggle.checked = payload.enable_fade;
+                if (formatSelect) formatSelect.value = payload.default_format;
+
+                saveConfigBtn.innerHTML = `<i data-lucide="check" class="w-3.5 h-3.5"></i><span>已成功保存！</span>`;
+                setTimeout(() => {
+                    saveConfigBtn.disabled = false;
+                    saveConfigBtn.innerHTML = `<i data-lucide="check" class="w-3.5 h-3.5"></i><span>保存系统配置</span>`;
+                    lucide.createIcons();
+                }, 2000);
+            } else {
+                throw new Error('保存配置失败');
+            }
+        } catch (e) {
+            alert('保存异常: ' + e.message);
+            saveConfigBtn.disabled = false;
+            saveConfigBtn.innerHTML = `<i data-lucide="check" class="w-3.5 h-3.5"></i><span>保存系统配置</span>`;
+            lucide.createIcons();
+        }
+    });
+}
+
+// -------------------------------------------------------------
+// 10. 全局常驻播放器 (完美按键状态切换 + 左右切歌 + 自动连播)
 // -------------------------------------------------------------
 function playTrackFromList(list, index) {
     if (!list || list.length === 0 || index < 0 || index >= list.length) return;
@@ -949,7 +1200,6 @@ playerPlayBtn.addEventListener('click', () => {
 if (playerPrevBtn) playerPrevBtn.addEventListener('click', playPrevTrack);
 if (playerNextBtn) playerNextBtn.addEventListener('click', playNextTrack);
 
-// 播放按键状态精准切换 (三角 ▶ / 双竖线 ⏸)
 globalAudio.addEventListener('play', () => {
     playerPlayBtn.innerHTML = `<i data-lucide="pause" class="w-4 h-4 fill-current"></i>`;
     lucide.createIcons();
@@ -960,7 +1210,6 @@ globalAudio.addEventListener('pause', () => {
     lucide.createIcons();
 });
 
-// 单曲结束自动切下一首
 globalAudio.addEventListener('ended', playNextTrack);
 
 globalAudio.addEventListener('timeupdate', () => {

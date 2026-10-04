@@ -2,9 +2,8 @@ import json
 import re
 import requests
 from typing import Optional, Dict, Any
-from config import AI_API_BASE, AI_API_KEY, AI_MODEL
+from config import load_settings
 
-# 容易引起混淆的风格/场景词汇
 UNCERTAIN_KEYWORDS = [
     '摇滚', '现场', 'Live', 'live', 'suno', 'Suno', 'AI', 'ai', 
     '翻唱', 'Cover', 'cover', '原唱', '改编', 'remix', 'Remix',
@@ -12,10 +11,6 @@ UNCERTAIN_KEYWORDS = [
 ]
 
 def needs_ai_confirmation(raw_text: str) -> bool:
-    """
-    判断歌曲名称是否格式不明确，是否需要 AI 介入固定规范
-    如果本身非常规整 (如 "周杰伦 - 晴天") 则无需调用 AI，节省时间与开销
-    """
     text = raw_text.strip()
     if any(k in text for k in UNCERTAIN_KEYWORDS):
         return True
@@ -24,13 +19,13 @@ def needs_ai_confirmation(raw_text: str) -> bool:
     return False
 
 def ai_normalize_song(raw_title: str, uploader: str = "群星", context_desc: str = "") -> Optional[Dict[str, str]]:
-    """
-    调用 AI 大模型对歌曲名和歌手名进行标准化规范
-    【核心原则】：
-    1. 歌手：提取真实的歌手或翻唱UP主名称；像“摇滚现场”、“伤感经典”等词绝对属于风格，禁止作为歌手！
-    2. 歌名：提取纯净歌曲名；画质词、营销词、风格分类词全部剥离，仅保留合法的 (Suno AI) 或 (Cover 原唱) 后缀。
-    """
-    if not AI_API_KEY or not AI_API_BASE:
+    """调用 AI 大模型对歌曲名和歌手名进行标准化规范 (动态读取最新设置)"""
+    cfg = load_settings()
+    api_base = cfg.get("ai_api_base", "").rstrip('/')
+    api_key = cfg.get("ai_api_key", "").strip()
+    model = cfg.get("ai_model", "gemini-3.8-flash").strip()
+
+    if not api_key or not api_base:
         return None
 
     system_prompt = """你是一个专业的本地音乐曲库整理专家。你的任务是将杂乱的B站音乐视频标题规范化为标准的音乐元数据。
@@ -57,13 +52,13 @@ def ai_normalize_song(raw_title: str, uploader: str = "群星", context_desc: st
 请按规则输出标准的 JSON:"""
 
     try:
-        url = f"{AI_API_BASE.rstrip('/')}/chat/completions"
+        url = f"{api_base}/chat/completions"
         headers = {
-            "Authorization": f"Bearer {AI_API_KEY}",
+            "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json"
         }
         payload = {
-            "model": AI_MODEL,
+            "model": model,
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
@@ -87,3 +82,28 @@ def ai_normalize_song(raw_title: str, uploader: str = "群星", context_desc: st
         print(f"AI 规范化调用异常: {e}")
         
     return None
+
+def test_ai_connection(api_base: str, api_key: str, model: str) -> dict:
+    """测试 AI 网关连通性与模型可用性"""
+    try:
+        url = f"{api_base.rstrip('/')}/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {api_key.strip()}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": model.strip(),
+            "messages": [
+                {"role": "user", "content": "hello"}
+            ],
+            "max_tokens": 5
+        }
+        t0 = requests.compat.time.time()
+        resp = requests.post(url, headers=headers, json=payload, timeout=6)
+        elapsed = round(requests.compat.time.time() - t0, 2)
+        if resp.status_code == 200:
+            return {"ok": True, "message": f"连接成功 (耗时 {elapsed}s)", "status": 200}
+        else:
+            return {"ok": False, "message": f"接口返回错误: HTTP {resp.status_code} - {resp.text[:100]}", "status": resp.status_code}
+    except Exception as e:
+        return {"ok": False, "message": f"连接异常: {str(e)}", "status": 500}
