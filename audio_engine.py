@@ -5,7 +5,7 @@ import subprocess
 import requests
 import yt_dlp
 from typing import Optional
-from mutagen.id3 import ID3, TIT2, TPE1, TALB, APIC, ID3NoHeaderError
+from mutagen.id3 import ID3, TIT2, TPE1, TPE2, TALB, TRCK, TDRC, APIC, ID3NoHeaderError
 from mutagen.flac import FLAC, Picture
 from mutagen.mp4 import MP4, MP4Cover
 
@@ -173,23 +173,39 @@ def download_cover(cover_url: str, output_path: str) -> bool:
         print(f"下载封面失败: {e}")
     return False
 
-def tag_audio_file(file_path: str, title: str, artist: str, album: str, cover_path: str = None, fmt: str = "flac"):
+def tag_audio_file(
+    file_path: str,
+    title: str,
+    artist: str,
+    album: str,
+    cover_path: str = None,
+    fmt: str = "flac",
+    track_num: int = 1,
+    total_tracks: int = 1,
+    album_artist: str = None,
+    year: str = "2026"
+):
     """
-    为音频写入规范的元数据（FLAC / ID3 / MP4 Tag）
-    规范：歌曲名、歌手、专辑名、封面，严格不包含歌词
+    为音频写入规范的工业级元数据（FLAC / ID3 / MP4 Tag）
+    全量支持播放器识别：歌曲名、歌手、专辑、专辑歌手、音轨号、年份与高清内嵌封面，严格不包含歌词
     """
+    alb_art = album_artist or artist
     try:
         if fmt == "flac":
             audio = FLAC(file_path)
             audio["title"] = title
             audio["artist"] = artist
             audio["album"] = album
+            audio["albumartist"] = alb_art
+            audio["tracknumber"] = str(track_num)
+            audio["tracktotal"] = str(total_tracks)
+            audio["date"] = year
             
             if cover_path and os.path.exists(cover_path):
                 pic = Picture()
                 with open(cover_path, "rb") as f:
                     pic.data = f.read()
-                pic.type = 3
+                pic.type = 3  # Front Cover (正面封面)
                 pic.mime = "image/jpeg" if cover_path.endswith((".jpg", ".jpeg")) else "image/png"
                 audio.clear_pictures()
                 audio.add_picture(pic)
@@ -204,6 +220,9 @@ def tag_audio_file(file_path: str, title: str, artist: str, album: str, cover_pa
             audio.add(TIT2(encoding=3, text=title))
             audio.add(TPE1(encoding=3, text=artist))
             audio.add(TALB(encoding=3, text=album))
+            audio.add(TPE2(encoding=3, text=alb_art))
+            audio.add(TRCK(encoding=3, text=f"{track_num}/{total_tracks}"))
+            audio.add(TDRC(encoding=3, text=year))
             
             if cover_path and os.path.exists(cover_path):
                 with open(cover_path, "rb") as f:
@@ -212,7 +231,7 @@ def tag_audio_file(file_path: str, title: str, artist: str, album: str, cover_pa
                 audio.add(APIC(
                     encoding=3,
                     mime=mime,
-                    type=3,
+                    type=3,  # Front Cover
                     desc="Cover",
                     data=cover_data
                 ))
@@ -223,6 +242,9 @@ def tag_audio_file(file_path: str, title: str, artist: str, album: str, cover_pa
             audio["\xa9nam"] = [title]
             audio["\xa9ART"] = [artist]
             audio["\xa9alb"] = [album]
+            audio["aART"] = [alb_art]
+            audio["trkn"] = [(track_num, total_tracks)]
+            audio["\xa9day"] = [year]
             if cover_path and os.path.exists(cover_path):
                 with open(cover_path, "rb") as f:
                     cover_data = f.read()
@@ -384,14 +406,27 @@ def cut_and_export_tracks(
             print(f"FFmpeg 导出错误 [{filename}]: {proc.stderr.decode('utf-8', errors='ignore')}")
             continue
 
-        # 写入元数据
+        # 针对各单曲支持优先下载并内嵌单曲专属封面 (若与合集封面不同)
+        effective_cover_path = cover_path
+        track_cover_url = track.get("cover_url")
+        if track_cover_url and track_cover_url != cover_url:
+            track_ep_cover = os.path.join(TEMP_DIR, f"cover_ep_{track.get('cid', i+1)}.jpg")
+            if not os.path.exists(track_ep_cover):
+                download_cover(track_cover_url, track_ep_cover)
+            if os.path.exists(track_ep_cover):
+                effective_cover_path = track_ep_cover
+
+        # 写入全量规范元数据标签 (全量支持播放器识别封面、歌手、专辑、专辑歌手、音轨号)
         tag_audio_file(
             file_path=output_path,
             title=title,
             artist=artist,
             album=album_name,
-            cover_path=cover_path,
-            fmt=export_format
+            cover_path=effective_cover_path,
+            fmt=export_format,
+            track_num=i + 1,
+            total_tracks=total_tracks,
+            album_artist=album_name or artist
         )
 
         file_size = os.path.getsize(output_path) if os.path.exists(output_path) else 0
