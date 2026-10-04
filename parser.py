@@ -195,7 +195,7 @@ def parse_text_for_tracks(text: str, total_duration: int, default_artist: str = 
         else:
             end_sec = total_duration if total_duration > start_sec else start_sec + 240
             
-        artist, title, is_ai = clean_song_info(pt["raw_title"], default_artist=default_artist, context_desc=context_desc)
+        artist, title, is_ai = clean_song_info(pt["raw_title"], default_artist=default_artist, context_desc=context_desc, use_ai=False)
         
         tracks.append({
             "id": i + 1,
@@ -207,7 +207,7 @@ def parse_text_for_tracks(text: str, total_duration: int, default_artist: str = 
             "start_str": seconds_to_time_str(start_sec),
             "end_str": seconds_to_time_str(end_sec),
             "duration_str": seconds_to_time_str(end_sec - start_sec),
-            "is_ai": is_ai
+            "is_ai": False
         })
         
     return tracks
@@ -261,7 +261,7 @@ def fetch_bilibili_video_info(bvid: str) -> Dict[str, Any]:
                 if ep_pic and ep_pic.startswith("//"):
                     ep_pic = "https:" + ep_pic
                     
-                artist, clean_title, is_ai = clean_song_info(ep_title, default_artist=owner_name, context_desc=desc)
+                artist, clean_title, is_ai = clean_song_info(ep_title, default_artist=owner_name, context_desc=desc, use_ai=False)
                 tracks.append({
                     "id": track_idx,
                     "artist": artist,
@@ -276,7 +276,7 @@ def fetch_bilibili_video_info(bvid: str) -> Dict[str, Any]:
                     "start_str": "00:00",
                     "end_str": seconds_to_time_str(ep_dur),
                     "duration_str": seconds_to_time_str(ep_dur),
-                    "is_ai": is_ai
+                    "is_ai": False
                 })
                 track_idx += 1
                 
@@ -286,7 +286,7 @@ def fetch_bilibili_video_info(bvid: str) -> Dict[str, Any]:
         for i, page in enumerate(pages):
             p_title = page.get("part", f"Track {i+1}")
             p_dur = page.get("duration", 0)
-            artist, clean_title, is_ai = clean_song_info(p_title, default_artist=owner_name, context_desc=desc)
+            artist, clean_title, is_ai = clean_song_info(p_title, default_artist=owner_name, context_desc=desc, use_ai=False)
             tracks.append({
                 "id": i + 1,
                 "artist": artist,
@@ -301,7 +301,7 @@ def fetch_bilibili_video_info(bvid: str) -> Dict[str, Any]:
                 "start_str": "00:00",
                 "end_str": seconds_to_time_str(p_dur),
                 "duration_str": seconds_to_time_str(p_dur),
-                "is_ai": is_ai
+                "is_ai": False
             })
             
     # 形态 3A: 单视频长音频串烧 - 简介自带时间戳

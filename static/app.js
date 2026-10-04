@@ -173,12 +173,13 @@ function renderVideoHeader(data) {
     videoTitle.innerText = data.title;
     videoOwner.innerText = data.uploader;
     durationBadge.innerText = data.duration_str;
-    albumInput.value = data.title;
+    albumInput.value = data.album_title || data.title;
 
     const sourceMap = {
+        'ugc_season': '官方合集',
+        'multi_page': '多P合集',
         'comment': '评论打点',
         'description': '简介打点',
-        'multi_page': '多P合集',
         'single': '单视频'
     };
     sourceBadge.innerText = sourceMap[data.source_type] || '自动提取';
@@ -186,7 +187,7 @@ function renderVideoHeader(data) {
 
 function renderTrackTable(tracks) {
     trackTableBody.innerHTML = '';
-    trackCountBadge.innerText = `${tracks.length} 首`;
+    trackCountBadge.innerText = `${tracks.length} 首合集单曲`;
 
     tracks.forEach((track, idx) => {
         const tr = document.createElement('tr');
