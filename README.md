@@ -2,14 +2,14 @@
 
 # BiliSplit
 
-### 哔哩哔哩音乐提取与自动化归档工作站 (Linux / LXC 原生版)
+### 哔哩哔哩音乐提取与自动化归档工作站 (Linux / Docker)
 
-专为 Linux 与 LXC 容器（Proxmox VE / Ubuntu / Debian）设计的音频提取与媒体归档系统。
+专为 Linux 系统设计的开箱即用音频提取与媒体归档系统。
 
-[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20LXC-blue?style=flat-square&logo=linux)](https://github.com)
-[![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)](https://github.com)
-[![Audio](https://img.shields.io/badge/Audio-EBU%20R128%20%7C%20320K-10b981?style=flat-square)](https://github.com)
-[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=flat-square&logo=docker&logoColor=white)](https://github.com)
+[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20Docker-blue?style=flat-square&logo=linux)](https://github.com/wooxi/bili-split)
+[![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=flat-square&logo=python&logoColor=white)](https://github.com/wooxi/bili-split)
+[![Audio](https://img.shields.io/badge/Audio-EBU%20R128%20%7C%20320K-10b981?style=flat-square)](https://github.com/wooxi/bili-split)
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=flat-square&logo=docker&logoColor=white)](https://github.com/wooxi/bili-split)
 [![License](https://img.shields.io/badge/License-MIT-purple?style=flat-square)](LICENSE)
 
 <br/>
@@ -42,73 +42,79 @@
 ### 🎶 全局常驻音频播放器
 * 界面底部常驻沉浸式流式音频控制台，支持时间轴毫秒拖拽微调、前退 5 秒快速定位、无级音量调节与实时封面渲染。
 
-### 🐧 Linux / LXC 容器原生就绪
-* 采用 Linux 标准目录规范，歌曲自动归档至宿主挂载点 `/music`（无缝衔接 NAS 与各类流媒体服务器）。
-* 开箱自带 Systemd 守护进程与自动化部署脚本，开机无感自启。
+### 🐧 Linux / Docker 原生就绪
+* 采用 Linux 标准目录规范，歌曲自动持久化归档至挂载目录 `/music`（无缝共享给 Navidrome、Jellyfin 等媒体库）。
+* 支持 Docker Compose 极简一键拉起，容器无缝重启与持久化。
 
 ---
 
-## 🚀 快速部署指南 (Linux / LXC)
+## 🚀 部署指南 (Linux / Docker)
 
-### 选项 A：Debian / Ubuntu / LXC 容器一键部署 (推荐)
+### 选项 A：Docker Compose 部署 (推荐)
 
-进入 LXC 容器终端（或通过 SSH 登录），执行安装命令：
+在 Linux 服务器中创建部署目录，编写 `docker-compose.yml`：
+
+```yaml
+version: '3.8'
+
+services:
+  bili-split:
+    image: bili-split:latest
+    build: .
+    container_name: bili-split
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      # 持久化音乐输出目录（可共享给 Navidrome / Jellyfin）
+      - /ssd/music:/music
+      # 持久化数据库与配置
+      - ./data:/app/data
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      - MUSIC_DIR=/music
+      - ENABLE_LOUDNORM=true
+      - ENABLE_FADE=true
+      - AI_API_BASE=http://192.168.100.4:8030/v1
+      - AI_API_KEY=sk-xxxxxx
+      - AI_MODEL=gemini-3.8-flash
+```
+
+启动服务：
+```bash
+docker compose up -d --build
+```
+
+访问地址：  
+👉 **`http://<Linux服务器IP>:8000`**
+
+---
+
+### 选项 B：Linux 宿主机原生部署
 
 ```bash
-# 1. 克隆代码至部署目录
-git clone <你的仓库地址> /opt/bili-music-splitter
+# 1. 克隆代码
+git clone https://github.com/wooxi/bili-split.git /opt/bili-music-splitter
 cd /opt/bili-music-splitter
 
-# 2. 执行一键安装脚本 (自动配置环境并注册 Systemd 开机自启)
+# 2. 执行安装脚本 (配置 Python 虚拟环境并注册 Systemd 开机自启)
 sudo bash install.sh
 ```
 
-部署完成后，在同局域网浏览器中访问：  
-👉 **`http://<LXC容器IP>:8000`**
-
 ---
 
-### 选项 B：Proxmox VE 外部存储挂载建议
-
-如果你在 Proxmox VE 中运行 LXC 容器，推荐通过 Bind Mount 将宿主机或 NAS 存储池挂载至容器内部的 `/music`：
+## 🛠️ 服务端运维命令 (Docker)
 
 ```bash
-# 在 PVE 宿主机终端中编辑对应容器配置 (如 ID 105):
-nano /etc/pve/lxc/105.conf
-
-# 末尾加入挂载行 (宿主机路径 -> 容器 /music 目录):
-mp0: /mnt/nas/music,mp=/music
-```
-*容器内切分的歌曲将即时落盘至 NAS，方便其他媒体服务（如 Jellyfin / Plex / Navidrome）即时扫库。*
-
----
-
-### 选项 C：Docker / Docker Compose 部署
-
-```bash
-# 启动容器并挂载存储
-docker compose up -d
-
 # 查看运行日志
 docker compose logs -f
-```
-
----
-
-## 🛠️ 服务端运维命令
-
-```bash
-# 查看运行状态
-systemctl status bili-split
-
-# 跟踪实时处理日志
-journalctl -u bili-split -f
 
 # 重启服务
-systemctl restart bili-split
+docker compose restart
 
-# 停止服务
-systemctl stop bili-split
+# 更新并重新构建容器
+docker compose up -d --build
 ```
 
 ---
