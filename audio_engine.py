@@ -386,18 +386,18 @@ def cut_and_export_tracks(
         if audio_filters:
             cmd.extend(["-af", ",".join(audio_filters)])
         
-        # 编码格式选择：默认 FLAC 无损品质
+        # 编码格式选择：标准化为 44.1kHz / 16-bit (彻底规避网易云云盘二次转码并保留高清封面)
         if export_format == "flac":
-            cmd.extend(["-c:a", "flac", "-compression_level", "5"])
+            cmd.extend(["-c:a", "flac", "-ar", "44100", "-sample_fmt", "s16", "-compression_level", "5"])
         elif export_format == "mp3":
-            cmd.extend(["-c:a", "libmp3lame", "-b:a", "320k"])
+            cmd.extend(["-c:a", "libmp3lame", "-b:a", "320k", "-ar", "44100"])
         elif export_format == "m4a":
-            cmd.extend(["-c:a", "aac", "-b:a", "256k"])
+            cmd.extend(["-c:a", "aac", "-b:a", "256k", "-ar", "44100"])
         else:
             if not audio_filters:
                 cmd.extend(["-c", "copy"])
             else:
-                cmd.extend(["-c:a", "flac"])
+                cmd.extend(["-c:a", "flac", "-ar", "44100", "-sample_fmt", "s16"])
             
         cmd.append(output_path)
 
