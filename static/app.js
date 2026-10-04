@@ -57,14 +57,17 @@ const playerCoverPlaceholder = document.getElementById('playerCoverPlaceholder')
 const playerTitle = document.getElementById('playerTitle');
 const playerArtist = document.getElementById('playerArtist');
 const playerPlayBtn = document.getElementById('playerPlayBtn');
-const playerPlayIcon = document.getElementById('playerPlayIcon');
-const playerRewindBtn = document.getElementById('playerRewindBtn');
-const playerForwardBtn = document.getElementById('playerForwardBtn');
+const playerPrevBtn = document.getElementById('playerPrevBtn');
+const playerNextBtn = document.getElementById('playerNextBtn');
 const playerCurrentTime = document.getElementById('playerCurrentTime');
 const playerDuration = document.getElementById('playerDuration');
 const playerSeeker = document.getElementById('playerSeeker');
 const playerVolume = document.getElementById('playerVolume');
 const playerDownloadBtn = document.getElementById('playerDownloadBtn');
+
+// 当前活动播放列表与索引
+let currentPlaylist = [];
+let currentTrackIndex = -1;
 
 // -------------------------------------------------------------
 // 1. 初始化与配置加载
@@ -438,8 +441,15 @@ function showCompleted(taskId, data) {
     completedBox.classList.remove('hidden');
     downloadZipBtn.href = `/api/download/${taskId}/zip`;
 
+    const outPlaylist = (data.files || []).map(f => ({
+        title: f.title,
+        artist: f.artist,
+        src: `/api/download/${taskId}/track/${encodeURIComponent(f.filename)}`,
+        cover: currentVideo ? currentVideo.cover_url : ''
+    }));
+
     outputFileList.innerHTML = '';
-    data.files.forEach(f => {
+    data.files.forEach((f, fIdx) => {
         const item = document.createElement('div');
         item.className = 'flex items-center justify-between p-2.5 bg-surface-base rounded-lg border border-surface-border text-xs';
         const streamUrl = `/api/download/${taskId}/track/${encodeURIComponent(f.filename)}`;
@@ -463,12 +473,7 @@ function showCompleted(taskId, data) {
         `;
 
         item.querySelector('.play-item-btn').addEventListener('click', () => {
-            playTrack({
-                title: f.title,
-                artist: f.artist,
-                src: streamUrl,
-                cover: currentVideo ? currentVideo.cover_url : ''
-            });
+            playTrackFromList(outPlaylist, fIdx);
         });
 
         outputFileList.appendChild(item);
@@ -512,6 +517,13 @@ async function loadLibrary(keyword = '') {
             return;
         }
 
+        const libPlaylist = libraryData.map(song => ({
+            title: song.title,
+            artist: song.artist,
+            src: `/api/stream-song/${encodeURIComponent(song.filename)}`,
+            cover: song.cover_url || ''
+        }));
+
         libraryData.forEach((song, idx) => {
             const tr = document.createElement('tr');
             tr.className = 'table-row-hover transition';
@@ -553,12 +565,7 @@ async function loadLibrary(keyword = '') {
             `;
 
             tr.querySelector('.play-lib-btn').addEventListener('click', () => {
-                playTrack({
-                    title: song.title,
-                    artist: song.artist,
-                    src: streamUrl,
-                    cover: song.cover_url
-                });
+                playTrackFromList(libPlaylist, idx);
             });
 
             tr.querySelector('.del-lib-btn').addEventListener('click', async (e) => {
@@ -582,8 +589,27 @@ async function loadLibrary(keyword = '') {
 }
 
 // -------------------------------------------------------------
-// 6. 全局底部音频播放器控制
+// 6. 全局底部音频播放器控制 (支持列表联动、左右切歌、自动连播)
 // -------------------------------------------------------------
+function playTrackFromList(list, index) {
+    if (!list || list.length === 0 || index < 0 || index >= list.length) return;
+    currentPlaylist = list;
+    currentTrackIndex = index;
+    playTrack(list[index]);
+}
+
+function playPrevTrack() {
+    if (!currentPlaylist || currentPlaylist.length === 0) return;
+    currentTrackIndex = (currentTrackIndex - 1 + currentPlaylist.length) % currentPlaylist.length;
+    playTrack(currentPlaylist[currentTrackIndex]);
+}
+
+function playNextTrack() {
+    if (!currentPlaylist || currentPlaylist.length === 0) return;
+    currentTrackIndex = (currentTrackIndex + 1) % currentPlaylist.length;
+    playTrack(currentPlaylist[currentTrackIndex]);
+}
+
 function playTrack({ title, artist, src, cover }) {
     playerTitle.innerText = title || '未知曲目';
     playerArtist.innerText = artist || '-';
@@ -612,17 +638,22 @@ playerPlayBtn.addEventListener('click', () => {
     }
 });
 
+if (playerPrevBtn) playerPrevBtn.addEventListener('click', playPrevTrack);
+if (playerNextBtn) playerNextBtn.addEventListener('click', playNextTrack);
+
+// 播放按键状态精准切换 (三角 / 双竖线)
 globalAudio.addEventListener('play', () => {
-    playerPlayIcon.setAttribute('data-lucide', 'pause');
-    playerPlayIcon.classList.remove('ml-0.5');
+    playerPlayBtn.innerHTML = `<i data-lucide="pause" class="w-4 h-4 fill-current"></i>`;
     lucide.createIcons();
 });
 
 globalAudio.addEventListener('pause', () => {
-    playerPlayIcon.setAttribute('data-lucide', 'play');
-    playerPlayIcon.classList.add('ml-0.5');
+    playerPlayBtn.innerHTML = `<i data-lucide="play" class="w-4 h-4 fill-current ml-0.5"></i>`;
     lucide.createIcons();
 });
+
+// 歌曲播放结束自动切换下一首
+globalAudio.addEventListener('ended', playNextTrack);
 
 globalAudio.addEventListener('timeupdate', () => {
     if (!globalAudio.duration) return;
@@ -634,16 +665,6 @@ globalAudio.addEventListener('timeupdate', () => {
 playerSeeker.addEventListener('input', (e) => {
     if (!globalAudio.duration) return;
     globalAudio.currentTime = (e.target.value / 100) * globalAudio.duration;
-});
-
-playerRewindBtn.addEventListener('click', () => {
-    globalAudio.currentTime = Math.max(0, globalAudio.currentTime - 5);
-});
-
-playerForwardBtn.addEventListener('click', () => {
-    if (globalAudio.duration) {
-        globalAudio.currentTime = Math.min(globalAudio.duration, globalAudio.currentTime + 5);
-    }
 });
 
 playerVolume.addEventListener('input', (e) => {
