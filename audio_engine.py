@@ -465,7 +465,8 @@ def cut_and_export_tracks(
     return generated_files
 
 def create_zip_archive(files: list, zip_path: str) -> str:
-    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zipf:
+    """将拆分好的歌曲文件打包为 ZIP (采用 ZIP_STORED 极速存储打包，避免对已压缩的 FLAC/M4A 重复耗时压缩)"""
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_STORED) as zipf:
         for f in files:
             file_path = f["path"]
             arcname = f["filename"]
