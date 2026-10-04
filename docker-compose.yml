@@ -3,21 +3,29 @@ version: '3.8'
 services:
   bili-split:
     build: .
+    image: bili-split:latest
     container_name: bili-split
     restart: unless-stopped
+    dns:
+      - 223.5.5.5
+      - 119.29.29.29
+    extra_hosts:
+      - "api.bilibili.com:116.163.15.199"
+      - "app.bilibili.com:116.163.15.199"
     ports:
       - "8000:8000"
+    volumes:
+      # 持久化音乐输出目录（与 Navidrome 共享曲库）
+      - /ssd/music:/music
+      # 持久化历史归档数据库与应用数据
+      - ./data:/app/data
     environment:
       - HOST=0.0.0.0
       - PORT=8000
       - MUSIC_DIR=/music
+      - DATA_DIR=/app/data
       - ENABLE_LOUDNORM=true
       - ENABLE_FADE=true
       - AI_API_BASE=http://192.168.100.4:8030/v1
       - AI_API_KEY=sk-xxbtN694lmzolOd4gPGLoREzYrwLroLxzhjZ3oD0wJ8D1C75
       - AI_MODEL=gemini-3.8-flash
-    volumes:
-      # 挂载宿主机/NAS的音乐存储目录
-      - /mnt/nas/music:/music
-      # 持久化历史归档数据库
-      - ./data:/app/data
