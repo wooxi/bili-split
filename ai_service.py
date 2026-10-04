@@ -1,0 +1,89 @@
+import json
+import re
+import requests
+from typing import Optional, Dict, Any
+from config import AI_API_BASE, AI_API_KEY, AI_MODEL
+
+# 容易引起混淆的风格/场景词汇
+UNCERTAIN_KEYWORDS = [
+    '摇滚', '现场', 'Live', 'live', 'suno', 'Suno', 'AI', 'ai', 
+    '翻唱', 'Cover', 'cover', '原唱', '改编', 'remix', 'Remix',
+    '纯音', '吉他', '钢琴', '民谣', '慢摇', 'DJ', '串烧', '合辑'
+]
+
+def needs_ai_confirmation(raw_text: str) -> bool:
+    """
+    判断歌曲名称是否格式不明确，是否需要 AI 介入固定规范
+    如果本身非常规整 (如 "周杰伦 - 晴天") 则无需调用 AI，节省时间与开销
+    """
+    text = raw_text.strip()
+    if any(k in text for k in UNCERTAIN_KEYWORDS):
+        return True
+    if " - " not in text and " —— " not in text:
+        return True
+    return False
+
+def ai_normalize_song(raw_title: str, uploader: str = "群星", context_desc: str = "") -> Optional[Dict[str, str]]:
+    """
+    调用 AI 大模型对歌曲名和歌手名进行标准化规范
+    【核心原则】：
+    1. 歌手：提取真实的歌手或翻唱UP主名称；像“摇滚现场”、“伤感经典”等词绝对属于风格，禁止作为歌手！
+    2. 歌名：提取纯净歌曲名；画质词、营销词、风格分类词全部剥离，仅保留合法的 (Suno AI) 或 (Cover 原唱) 后缀。
+    """
+    if not AI_API_KEY or not AI_API_BASE:
+        return None
+
+    system_prompt = """你是一个专业的本地音乐曲库整理专家。你的任务是将杂乱的B站音乐视频标题规范化为标准的音乐元数据。
+输出必须是严格的 JSON 格式: {"artist": "歌手名", "title": "歌名"}
+
+【核心规则】
+1. 歌手 (artist):
+   - 提取真实的歌手、音乐人或翻唱UP主（如 Agroce、周杰伦）。
+   - 绝对禁止把“摇滚现场”、“现场版”、“国语经典”、“民谣”等风格/场景词当作歌手！
+   - 如果视频是 UP主 使用 Suno/AI 改编，歌手填 UP主（例如 Agroce），切忌填“摇滚现场”。
+
+2. 歌名 (title):
+   - 提取歌曲的真实核心名称（例如 心墙、晴天）。
+   - 必须剥离营销词与画质音质词（如 4K、60帧、Hi-Res音质、高音质、纯享版、无杂音、动态歌词）。
+   - 必须剥离风格分类词（如“摇滚现场”、“现场版”、“伤感慢摇”、“纯音乐”），这些是风格不是歌名！
+   - 版本规范：如果是 Suno/AI 改编，附上 (Suno AI)；如果是翻唱且知道原唱，附上 (Cover 原唱)；如果是 Live，附上 (Live)。示例: "心墙 (Suno AI)" 或 "白夜 (Cover 尹姝贻)"。
+
+3. 输出要求: 仅输出 JSON 对象，不要包含 markdown 代码块或其他解释。"""
+
+    user_prompt = f"""待整理的视频标题: "{raw_title}"
+视频UP主: "{uploader}"
+视频简介补充信息: "{context_desc[:300] if context_desc else ''}"
+
+请按规则输出标准的 JSON:"""
+
+    try:
+        url = f"{AI_API_BASE.rstrip('/')}/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {AI_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": AI_MODEL,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            "temperature": 0.1,
+            "max_tokens": 150
+        }
+        
+        resp = requests.post(url, headers=headers, json=payload, timeout=8)
+        if resp.status_code == 200:
+            result = resp.json()
+            content = result["choices"][0]["message"]["content"].strip()
+            json_match = re.search(r'\{[^{}]*\}', content)
+            if json_match:
+                parsed = json.loads(json_match.group(0))
+                artist = parsed.get("artist", "").strip()
+                title = parsed.get("title", "").strip()
+                if artist and title:
+                    return {"artist": artist, "title": title}
+    except Exception as e:
+        print(f"AI 规范化调用异常: {e}")
+        
+    return None

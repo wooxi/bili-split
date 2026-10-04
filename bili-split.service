@@ -1,0 +1,26 @@
+[Unit]
+Description=BiliSplit - 哔哩哔哩音乐合集智能拆歌服务 (Linux/LXC)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/bili-music-splitter
+ExecStart=/opt/bili-music-splitter/venv/bin/python -m uvicorn app:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=5
+
+# 环境变量配置 (可通过 /opt/bili-music-splitter/.env 文件覆盖)
+Environment=HOST=0.0.0.0
+Environment=PORT=8000
+Environment=MUSIC_DIR=/music
+Environment=ENABLE_LOUDNORM=true
+Environment=ENABLE_FADE=true
+
+# 如需配置私有 AI 接口，可取消注释并填入：
+# Environment=AI_API_BASE=http://192.168.100.4:8030/v1
+# Environment=AI_API_KEY=sk-xxxxxx
+# Environment=AI_MODEL=gemini-3.8-flash
+
+[Install]
+WantedBy=multi-user.target

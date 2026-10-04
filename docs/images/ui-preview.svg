@@ -1,0 +1,145 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 580" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#0c1017"/>
+      <stop offset="100%" stop-color="#080b10"/>
+    </linearGradient>
+    <linearGradient id="cardGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#141a26"/>
+      <stop offset="100%" stop-color="#10151f"/>
+    </linearGradient>
+    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#10b981"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="8" stdDeviation="16" flood-color="#000" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+
+  <rect width="1000" height="580" fill="url(#bgGrad)"/>
+
+  <!-- Top System Bar -->
+  <rect x="0" y="0" width="1000" height="56" fill="#0d1118" stroke="#1e2638" stroke-width="1"/>
+  <rect x="24" y="14" width="28" height="28" rx="8" fill="#10b981" fill-opacity="0.1" stroke="#10b981" stroke-opacity="0.3"/>
+  <circle cx="38" cy="28" r="6" stroke="#10b981" stroke-width="2" fill="none"/>
+  <text x="64" y="33" fill="#ffffff" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-weight="700" font-size="14" letter-spacing="1">BILISPLIT</text>
+  
+  <!-- View Switcher -->
+  <rect x="180" y="12" width="168" height="32" rx="8" fill="#131924" stroke="#1f283d" stroke-width="1"/>
+  <rect x="184" y="15" width="76" height="26" rx="6" fill="#1f283d"/>
+  <text x="202" y="32" fill="#ffffff" font-family="-apple-system, sans-serif" font-weight="600" font-size="12">工作台</text>
+  <text x="278" y="32" fill="#94a3b8" font-family="-apple-system, sans-serif" font-weight="500" font-size="12">媒体库</text>
+
+  <!-- Server Badge -->
+  <rect x="850" y="14" width="126" height="28" rx="6" fill="#131924" stroke="#1f283d" stroke-width="1"/>
+  <circle cx="866" cy="28" r="3" fill="#10b981"/>
+  <text x="878" y="32" fill="#94a3b8" font-family="monospace" font-size="11">/music</text>
+
+  <!-- Main Container -->
+  <!-- Search / Input Panel -->
+  <rect x="40" y="76" width="920" height="48" rx="10" fill="url(#cardGrad)" stroke="#212a3d" stroke-width="1" filter="url(#shadow)"/>
+  <circle cx="64" cy="100" r="6" stroke="#64748b" stroke-width="2" fill="none"/>
+  <line x1="68" y1="104" x2="74" y2="110" stroke="#64748b" stroke-width="2"/>
+  <text x="88" y="105" fill="#e2e8f0" font-family="-apple-system, sans-serif" font-size="13">https://www.bilibili.com/video/BV1wgjN6fELp/</text>
+  <rect x="860" y="84" width="88" height="32" rx="8" fill="url(#accentGrad)"/>
+  <text x="888" y="104" fill="#ffffff" font-family="-apple-system, sans-serif" font-weight="600" font-size="12">解析</text>
+
+  <!-- Metadata Card -->
+  <rect x="40" y="136" width="920" height="96" rx="10" fill="url(#cardGrad)" stroke="#212a3d" stroke-width="1"/>
+  <rect x="56" y="148" width="120" height="72" rx="6" fill="#1a2233" stroke="#2a354d" stroke-width="1"/>
+  <!-- Image placeholder art -->
+  <polygon points="56,200 90,170 120,195 150,165 176,200 176,220 56,220" fill="#10b981" fill-opacity="0.2"/>
+  <circle cx="95" cy="165" r="8" fill="#10b981" fill-opacity="0.4"/>
+  
+  <text x="192" y="168" fill="#ffffff" font-family="-apple-system, sans-serif" font-weight="700" font-size="15">【摇滚现场】心墙-Suno Hi-Res音质</text>
+  <rect x="192" y="178" width="52" height="18" rx="4" fill="#10b981" fill-opacity="0.1" stroke="#10b981" stroke-opacity="0.3"/>
+  <text x="200" y="191" fill="#10b981" font-family="-apple-system, sans-serif" font-size="10" font-weight="600">单视频</text>
+  <text x="254" y="191" fill="#94a3b8" font-family="monospace" font-size="11">05:55</text>
+  <text x="192" y="214" fill="#64748b" font-family="-apple-system, sans-serif" font-size="12">UP主: <tspan fill="#cbd5e1">Agroce</tspan></text>
+
+  <!-- Settings inputs right side -->
+  <text x="640" y="165" fill="#94a3b8" font-family="-apple-system, sans-serif" font-size="11">专辑:</text>
+  <rect x="675" y="152" width="265" height="22" rx="4" fill="#0d1117" stroke="#212a3d" stroke-width="1"/>
+  <text x="683" y="167" fill="#cbd5e1" font-family="-apple-system, sans-serif" font-size="11">心墙</text>
+
+  <text x="640" y="193" fill="#94a3b8" font-family="-apple-system, sans-serif" font-size="11">格式:</text>
+  <rect x="675" y="180" width="265" height="22" rx="4" fill="#0d1117" stroke="#212a3d" stroke-width="1"/>
+  <text x="683" y="195" fill="#cbd5e1" font-family="-apple-system, sans-serif" font-size="11">MP3 (320Kbps)</text>
+
+  <circle cx="682" cy="214" r="5" fill="#10b981"/>
+  <text x="694" y="218" fill="#94a3b8" font-family="-apple-system, sans-serif" font-size="11">响度均衡 (EBU R128)</text>
+  <circle cx="830" cy="214" r="5" fill="#10b981"/>
+  <text x="842" y="218" fill="#94a3b8" font-family="-apple-system, sans-serif" font-size="11">首尾淡出 (0.3s)</text>
+
+  <!-- Data Table -->
+  <rect x="40" y="244" width="920" height="252" rx="10" fill="url(#cardGrad)" stroke="#212a3d" stroke-width="1"/>
+  
+  <!-- Table Header -->
+  <rect x="40" y="244" width="920" height="38" rx="10" fill="#0f141d" stroke="#212a3d" stroke-width="1"/>
+  <text x="60" y="268" fill="#ffffff" font-family="-apple-system, sans-serif" font-weight="600" font-size="12">曲目清单</text>
+  <text x="120" y="268" fill="#64748b" font-family="monospace" font-size="11">1 tracks</text>
+
+  <!-- Action buttons right -->
+  <rect x="740" y="250" width="66" height="24" rx="4" fill="#581c87" fill-opacity="0.3" stroke="#a855f7" stroke-opacity="0.3"/>
+  <text x="750" y="266" fill="#d8b4fe" font-family="-apple-system, sans-serif" font-size="11">✨ AI 规范</text>
+  <rect x="814" y="250" width="70" height="24" rx="4" fill="#1a2233" stroke="#28344c" stroke-width="1"/>
+  <text x="826" y="266" fill="#cbd5e1" font-family="-apple-system, sans-serif" font-size="11">互换</text>
+  <rect x="892" y="250" width="52" height="24" rx="4" fill="#1a2233" stroke="#28344c" stroke-width="1"/>
+  <text x="906" y="266" fill="#cbd5e1" font-family="-apple-system, sans-serif" font-size="11">+ 加曲</text>
+
+  <!-- Table Columns -->
+  <text x="60" y="302" fill="#64748b" font-family="monospace" font-size="11">#</text>
+  <text x="100" y="302" fill="#64748b" font-family="-apple-system, sans-serif" font-size="11">歌手</text>
+  <text x="260" y="302" fill="#64748b" font-family="-apple-system, sans-serif" font-size="11">歌名</text>
+  <text x="560" y="302" fill="#64748b" font-family="-apple-system, sans-serif" font-size="11">时间范围</text>
+  <text x="730" y="302" fill="#64748b" font-family="-apple-system, sans-serif" font-size="11">时长</text>
+  <text x="890" y="302" fill="#64748b" font-family="-apple-system, sans-serif" font-size="11">操作</text>
+
+  <line x1="40" y1="312" x2="960" y2="312" stroke="#1f283d" stroke-width="1"/>
+
+  <!-- Row 1 -->
+  <text x="60" y="342" fill="#64748b" font-family="monospace" font-size="11">1</text>
+  <text x="100" y="342" fill="#34d399" font-family="-apple-system, sans-serif" font-weight="600" font-size="12">Agroce</text>
+  <text x="260" y="342" fill="#ffffff" font-family="-apple-system, sans-serif" font-weight="500" font-size="12">心墙 (Suno AI)</text>
+  <rect x="365" y="330" width="22" height="15" rx="3" fill="#581c87" fill-opacity="0.2" stroke="#a855f7" stroke-opacity="0.3"/>
+  <text x="369" y="341" fill="#c084fc" font-family="monospace" font-size="9">AI</text>
+  
+  <text x="560" y="342" fill="#94a3b8" font-family="monospace" font-size="11">00:00 ~ 05:55</text>
+  <text x="730" y="342" fill="#94a3b8" font-family="monospace" font-size="11">05:55</text>
+  
+  <text x="886" y="342" fill="#94a3b8" font-family="-apple-system, sans-serif" font-size="12">✨ ⇄ 🗑️</text>
+
+  <!-- Table Footer Submit Bar -->
+  <rect x="40" y="450" width="920" height="46" rx="0" fill="#0d1118" stroke="#212a3d" stroke-width="1"/>
+  <text x="60" y="478" fill="#10b981" font-family="monospace" font-size="11">就绪 · 自动写入 /music</text>
+  <rect x="800" y="458" width="144" height="30" rx="6" fill="url(#accentGrad)"/>
+  <text x="830" y="477" fill="#ffffff" font-family="-apple-system, sans-serif" font-weight="600" font-size="11">执行导出并归档</text>
+
+  <!-- Persistent Global Audio Player Bar -->
+  <rect x="0" y="508" width="1000" height="72" fill="#0e131b" stroke="#1f283d" stroke-width="1"/>
+  
+  <!-- Left Track Info -->
+  <rect x="24" y="522" width="44" height="44" rx="6" fill="#1a2233" stroke="#2a354d" stroke-width="1"/>
+  <polygon points="24,550 40,535 55,550 68,540 68,566 24,566" fill="#10b981" fill-opacity="0.3"/>
+  <text x="80" y="540" fill="#ffffff" font-family="-apple-system, sans-serif" font-weight="600" font-size="12">心墙 (Suno AI)</text>
+  <text x="80" y="556" fill="#94a3b8" font-family="-apple-system, sans-serif" font-size="11">Agroce</text>
+
+  <!-- Center Player Controls -->
+  <circle cx="500" cy="535" r="14" fill="#ffffff"/>
+  <polygon points="496,529 506,535 496,541" fill="#0c1017"/>
+  <text x="460" y="539" fill="#94a3b8" font-size="12">↺ 5s</text>
+  <text x="526" y="539" fill="#94a3b8" font-size="12">5s ↻</text>
+
+  <!-- Scrubber -->
+  <text x="320" y="563" fill="#64748b" font-family="monospace" font-size="10">01:42</text>
+  <rect x="360" y="559" width="280" height="4" rx="2" fill="#1e293b"/>
+  <rect x="360" y="559" width="90" height="4" rx="2" fill="#10b981"/>
+  <circle cx="450" cy="561" r="5" fill="#10b981"/>
+  <text x="650" y="563" fill="#64748b" font-family="monospace" font-size="10">05:55</text>
+
+  <!-- Right Tools -->
+  <text x="890" y="548" fill="#94a3b8" font-size="13">💾 ⬇️ 🔊</text>
+  <rect x="925" y="545" width="50" height="4" rx="2" fill="#1e293b"/>
+  <rect x="925" y="545" width="38" height="4" rx="2" fill="#10b981"/>
+</svg>

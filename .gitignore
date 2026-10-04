@@ -1,0 +1,30 @@
+# Python / Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# Temporary, cache and media test files
+temp/
+downloads/
+music/
+*.m4a
+*.mp3
+*.flac
+*.webm
+*.aac
+*.log
+
+# SQLite local data
+data/*.db
+data/*.db-wal
+data/*.db-shm
+
+# Local Environment Variables
+.env

@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  bili-split:
+    build: .
+    container_name: bili-split
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
+      - MUSIC_DIR=/music
+      - ENABLE_LOUDNORM=true
+      - ENABLE_FADE=true
+      - AI_API_BASE=http://192.168.100.4:8030/v1
+      - AI_API_KEY=sk-xxbtN694lmzolOd4gPGLoREzYrwLroLxzhjZ3oD0wJ8D1C75
+      - AI_MODEL=gemini-3.8-flash
+    volumes:
+      # 挂载宿主机/NAS的音乐存储目录
+      - /mnt/nas/music:/music
+      # 持久化历史归档数据库
+      - ./data:/app/data
