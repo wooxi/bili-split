@@ -367,8 +367,8 @@ async def start_upload_task(file_names: Optional[List[str]] = None) -> dict:
                     _save_state_to_disk()
 
                 except json.JSONDecodeError:
-                    if line_str:
-                        _append_log("info", line_str)
+                    # 屏蔽第三方底层库打印的非 JSON 格式调试文本 (如 NeteaseCloudMusicApi 内部的 [ERR] 调试输出)
+                    pass
 
             await _current_process.wait()
 

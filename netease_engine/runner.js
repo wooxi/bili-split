@@ -1,7 +1,25 @@
 const fs = require('fs');
 const path = require('path');
 
-// 保证即使 NeteaseCloudMusicApi 内部有 warning 或异常也不污染 stdout 的 JSON 输出
+// 劫持 stdout/stderr，仅允许结构化 JSON 消息输出，彻底屏蔽第三方库内部的 [ERR] 调试文本
+const realStdoutWrite = process.stdout.write.bind(process.stdout);
+const realStderrWrite = process.stderr.write.bind(process.stderr);
+
+function emitEvent(eventObj) {
+    realStdoutWrite(JSON.stringify(eventObj) + '\n');
+}
+
+console.log = function(...args) {
+    if (args.length === 1 && typeof args[0] === 'string' && args[0].startsWith('{') && args[0].endsWith('}')) {
+        realStdoutWrite(args[0] + '\n');
+    }
+};
+console.error = function(...args) {
+    if (args.length === 1 && typeof args[0] === 'string' && args[0].startsWith('{') && args[0].endsWith('}')) {
+        realStderrWrite(args[0] + '\n');
+    }
+};
+
 let api;
 try {
     api = require('NeteaseCloudMusicApi');
@@ -9,7 +27,7 @@ try {
     try {
         api = require('/ssd/docker/bili-split/netease_uploader/node_modules/NeteaseCloudMusicApi');
     } catch (e2) {
-        console.error(JSON.stringify({ success: false, error: '未能加载 NeteaseCloudMusicApi 模块: ' + (e2.message || e2) }));
+        emitEvent({ success: false, error: '未能加载 NeteaseCloudMusicApi 模块: ' + (e2.message || e2) });
         process.exit(1);
     }
 }
@@ -391,37 +409,43 @@ async function handleUpload() {
         for (let attempt = 1; attempt <= 2; attempt++) {
             try {
                 const fileBuffer = fs.readFileSync(fullPath);
+                // 核心修复：NeteaseCloudMusicApi 内部执行了 Buffer.from(name, 'latin1').toString('utf-8')
+                // 必须预先转为 latin1 二进制，解码后才能 100% 精确还原原始 UTF-8 中文字符，彻底杜绝乱码导致的 409/404 错误
+                const safeName = Buffer.from(filename, 'utf-8').toString('latin1');
                 const res = await api.cloud({
                     songFile: {
-                        name: filename,
+                        name: safeName,
                         data: fileBuffer
                     },
                     cookie: cookie
                 });
 
-                if (res?.body && (res.body.code === 200 || res.body.code === 201)) {
+                const body = res?.body || {};
+                const isSuccess = (body.code === 200 || body.code === 201) && (body.songId || body.privateCloud || body.songData);
+
+                if (isSuccess) {
                     uploadSuccess = true;
-                    const songData = res.body.songData || {};
+                    const songData = body.songData || body.privateCloud?.simpleSong || {};
                     cloudTitleSet.add(normName);
                     cloudTitleSet.add(normPureTitle);
                     state.uploaded++;
 
-                    console.log(JSON.stringify({
+                    emitEvent({
                         event: 'success',
                         index: i + 1,
                         total: targetFiles.length,
                         filename: filename,
-                        songId: songData.id || 0,
-                        songName: songData.name || filename
-                    }));
+                        songId: songData.id || body.songId || 0,
+                        songName: songData.name || body.privateCloud?.songName || filename
+                    });
                     break;
                 } else {
-                    lastErrorMsg = `返回码: ${res?.body?.code || '未知'}`;
+                    lastErrorMsg = body.msg || `返回码: ${body.code || '未知'}`;
                 }
             } catch (err) {
-                lastErrorMsg = err ? (err.message || (typeof err === 'object' ? JSON.stringify(err) : String(err))) : '未知错误';
+                lastErrorMsg = err?.body?.msg || err?.message || (typeof err === 'object' ? JSON.stringify(err) : String(err)) || '未知错误';
                 if (attempt < 2) {
-                    await new Promise(r => setTimeout(r, 2500)); // 重试前等待
+                    await new Promise(r => setTimeout(r, 2000)); // 重试前等待
                 }
             }
         }
