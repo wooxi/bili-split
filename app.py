@@ -39,6 +39,15 @@ from db import (
     get_recent_tasks,
     delete_task_record
 )
+from netease_service import (
+    get_netease_status,
+    create_qr_code,
+    check_qr_code,
+    logout as netease_logout,
+    start_upload_task as netease_start_upload,
+    get_upload_status as netease_get_upload_status,
+    cancel_upload_task as netease_cancel_upload
+)
 
 app = FastAPI(
     title="BiliSplit - Workstation Edition",
@@ -104,6 +113,10 @@ class TestAiRequest(BaseModel):
     ai_api_base: str
     ai_api_key: str
     ai_model: str
+
+class NeteaseUploadRequest(BaseModel):
+    file_names: Optional[List[str]] = None
+    song_ids: Optional[List[int]] = None
 
 @app.on_event("startup")
 async def on_server_startup():
@@ -481,6 +494,61 @@ async def api_stream_song(filename: str):
             raise HTTPException(status_code=404, detail=f"曲目文件未找到: {filename}")
             
     return FileResponse(str(file_path), filename=file_path.name)
+
+# ==============================================================
+# 网易云音乐云盘与扫码登录 API
+# ==============================================================
+
+@app.get("/api/netease/status")
+async def api_netease_status():
+    """获取网易云登录用户信息及云盘容量配额"""
+    return await get_netease_status()
+
+@app.post("/api/netease/qr/create")
+async def api_netease_qr_create():
+    """生成网易云登录二维码与 Key"""
+    return await create_qr_code()
+
+@app.get("/api/netease/qr/check")
+async def api_netease_qr_check(key: str = Query(...)):
+    """轮询网易云二维码扫码授权状态"""
+    return await check_qr_code(key)
+
+@app.post("/api/netease/logout")
+async def api_netease_logout():
+    """退出网易云账号"""
+    return await netease_logout()
+
+@app.post("/api/netease/upload")
+async def api_netease_upload(req: Optional[NeteaseUploadRequest] = None):
+    """发起推送到网易云云盘任务 (支持全量增量或选定歌曲列表)"""
+    file_names = []
+    if req:
+        if req.file_names:
+            file_names.extend(req.file_names)
+        if req.song_ids:
+            # 根据 song_ids 从媒体库查询出对应物理文件名
+            all_songs = get_history_songs(limit=1000)
+            target_ids = set(req.song_ids)
+            for s in all_songs:
+                if s["id"] in target_ids and s.get("filename"):
+                    file_names.append(s["filename"])
+    
+    # 若未指定则为全量扫描 MUSIC_DIR 增量同步
+    res = await netease_start_upload(file_names=file_names if file_names else None)
+    if not res.get("success") and res.get("code") == 409:
+        raise HTTPException(status_code=409, detail=res.get("message"))
+    return res
+
+@app.get("/api/netease/upload/status")
+async def api_netease_upload_status():
+    """获取网易云上传任务实时进度与日志"""
+    return netease_get_upload_status()
+
+@app.post("/api/netease/upload/cancel")
+async def api_netease_upload_cancel():
+    """主动中止当前网易云上传任务"""
+    return await netease_cancel_upload()
 
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")

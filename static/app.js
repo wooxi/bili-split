@@ -16,19 +16,26 @@ let tracklistLayout = 'double'; // 'double' 双列网格 (大合集推荐) 或 '
 const navWorkstation = document.getElementById('navWorkstation');
 const navTasks = document.getElementById('navTasks');
 const navLibrary = document.getElementById('navLibrary');
+const navNetease = document.getElementById('navNetease');
 const navSettings = document.getElementById('navSettings');
 const navActiveTaskBadge = document.getElementById('navActiveTaskBadge');
 const navLibraryCountBadge = document.getElementById('navLibraryCountBadge');
+const navNeteaseBadge = document.getElementById('navNeteaseBadge');
 
 const viewWorkstation = document.getElementById('viewWorkstation');
 const viewTasks = document.getElementById('viewTasks');
 const viewLibrary = document.getElementById('viewLibrary');
+const viewNetease = document.getElementById('viewNetease');
 const viewSettings = document.getElementById('viewSettings');
 const viewTitle = document.getElementById('viewTitle');
 
 const themeToggleBtn = document.getElementById('themeToggleBtn');
 const quickTaskIndicator = document.getElementById('quickTaskIndicator');
 const quickTaskText = document.getElementById('quickTaskText');
+const quickNeteaseIndicator = document.getElementById('quickNeteaseIndicator');
+const quickNeteaseText = document.getElementById('quickNeteaseText');
+const headerNeteaseBtn = document.getElementById('headerNeteaseBtn');
+const headerNeteaseUserText = document.getElementById('headerNeteaseUserText');
 const sidebarMusicPath = document.getElementById('sidebarMusicPath');
 const sidebarPlatformText = document.getElementById('sidebarPlatformText');
 
@@ -68,6 +75,7 @@ const progressBar = document.getElementById('progressBar');
 
 const completedBox = document.getElementById('completedBox');
 const downloadZipBtn = document.getElementById('downloadZipBtn');
+const completedUploadNeteaseBtn = document.getElementById('completedUploadNeteaseBtn');
 const outputFileList = document.getElementById('outputFileList');
 
 // DOM 引用 - 任务队列
@@ -82,7 +90,54 @@ const selectAllCheckbox = document.getElementById('selectAllCheckbox');
 const batchActionBar = document.getElementById('batchActionBar');
 const batchCountText = document.getElementById('batchCountText');
 const batchDeselectBtn = document.getElementById('batchDeselectBtn');
+const batchUploadNeteaseBtn = document.getElementById('batchUploadNeteaseBtn');
 const batchDeleteBtn = document.getElementById('batchDeleteBtn');
+
+// DOM 引用 - 网易云同步中心
+const neteaseNotLoggedInCard = document.getElementById('neteaseNotLoggedInCard');
+const neteaseLoggedInCard = document.getElementById('neteaseLoggedInCard');
+const openQrLoginBtn = document.getElementById('openQrLoginBtn');
+const neteaseRefreshBtn = document.getElementById('neteaseRefreshBtn');
+const neteaseSyncAllBtn = document.getElementById('neteaseSyncAllBtn');
+const neteaseReLoginBtn = document.getElementById('neteaseReLoginBtn');
+const neteaseLogoutBtn = document.getElementById('neteaseLogoutBtn');
+const neteaseUserAvatar = document.getElementById('neteaseUserAvatar');
+const neteaseUserNickname = document.getElementById('neteaseUserNickname');
+const neteaseVipBadge = document.getElementById('neteaseVipBadge');
+const neteaseUserId = document.getElementById('neteaseUserId');
+const neteaseCloudCapacityText = document.getElementById('neteaseCloudCapacityText');
+const neteaseCloudCapacityBar = document.getElementById('neteaseCloudCapacityBar');
+
+const neteaseStatusBadge = document.getElementById('neteaseStatusBadge');
+const neteaseCancelUploadBtn = document.getElementById('neteaseCancelUploadBtn');
+const neteaseCurrentIcon = document.getElementById('neteaseCurrentIcon');
+const neteaseCurrentFileName = document.getElementById('neteaseCurrentFileName');
+const neteaseCurrentFileSize = document.getElementById('neteaseCurrentFileSize');
+const neteaseProgressPct = document.getElementById('neteaseProgressPct');
+const neteaseProgressBar = document.getElementById('neteaseProgressBar');
+const neteaseStepMessage = document.getElementById('neteaseStepMessage');
+const neteaseCurrentIndexText = document.getElementById('neteaseCurrentIndexText');
+
+const neteaseMetricTotal = document.getElementById('neteaseMetricTotal');
+const neteaseMetricUploaded = document.getElementById('neteaseMetricUploaded');
+const neteaseMetricSkipped = document.getElementById('neteaseMetricSkipped');
+const neteaseMetricFailed = document.getElementById('neteaseMetricFailed');
+
+const neteaseAutoScrollCheck = document.getElementById('neteaseAutoScrollCheck');
+const neteaseClearLogsBtn = document.getElementById('neteaseClearLogsBtn');
+const neteaseLogContainer = document.getElementById('neteaseLogContainer');
+
+// DOM 引用 - 扫码登录模态弹窗
+const neteaseQrModal = document.getElementById('neteaseQrModal');
+const closeNeteaseQrModalBtn = document.getElementById('closeNeteaseQrModalBtn');
+const neteaseQrLoading = document.getElementById('neteaseQrLoading');
+const neteaseQrImg = document.getElementById('neteaseQrImg');
+const neteaseQrOverlay = document.getElementById('neteaseQrOverlay');
+const neteaseQrOverlayIcon = document.getElementById('neteaseQrOverlayIcon');
+const neteaseQrOverlayText = document.getElementById('neteaseQrOverlayText');
+const neteaseQrRefreshBtn = document.getElementById('neteaseQrRefreshBtn');
+const neteaseQrStatusDot = document.getElementById('neteaseQrStatusDot');
+const neteaseQrStatusText = document.getElementById('neteaseQrStatusText');
 
 // DOM 引用 - 系统配置表单
 const cfgDefaultFormat = document.getElementById('cfgDefaultFormat');
@@ -177,6 +232,8 @@ async function init() {
 
     loadLibrary();
     checkActiveTasksOnLoad();
+    loadNeteaseStatus();
+    checkActiveNeteaseUploadOnLoad();
 }
 
 // -------------------------------------------------------------
@@ -186,6 +243,7 @@ const views = {
     workstation: { el: viewWorkstation, btn: navWorkstation, title: '音频提取工作台' },
     tasks: { el: viewTasks, btn: navTasks, title: '任务执行历史与断点队列' },
     library: { el: viewLibrary, btn: navLibrary, title: '持久化媒体曲库 (/music)' },
+    netease: { el: viewNetease, btn: navNetease, title: '网易云音乐云盘增量同步' },
     settings: { el: viewSettings, btn: navSettings, title: '系统参数与运行设置' }
 };
 
@@ -204,16 +262,33 @@ function switchView(target) {
 
     if (target === 'library') loadLibrary(librarySearchInput ? librarySearchInput.value.trim() : '');
     if (target === 'tasks') loadTasksHistory();
+    if (target === 'netease') {
+        loadNeteaseStatus();
+        fetchNeteaseUploadStatus();
+    }
     lucide.createIcons();
 }
 
 navWorkstation.addEventListener('click', () => switchView('workstation'));
 navTasks.addEventListener('click', () => switchView('tasks'));
 navLibrary.addEventListener('click', () => switchView('library'));
+navNetease.addEventListener('click', () => switchView('netease'));
 navSettings.addEventListener('click', () => switchView('settings'));
 
 if (quickTaskIndicator) {
     quickTaskIndicator.addEventListener('click', () => switchView('tasks'));
+}
+if (quickNeteaseIndicator) {
+    quickNeteaseIndicator.addEventListener('click', () => switchView('netease'));
+}
+if (headerNeteaseBtn) {
+    headerNeteaseBtn.addEventListener('click', () => {
+        if (!neteaseUser) {
+            openQrLoginModal();
+        } else {
+            switchView('netease');
+        }
+    });
 }
 
 // -------------------------------------------------------------
@@ -1042,6 +1117,9 @@ async function loadLibrary(keyword = '') {
                 <td class="py-2.5 px-3 text-center font-mono text-slate-500 text-[11px]">${dateStr}</td>
                 <td class="py-2.5 px-3 text-right">
                     <div class="flex items-center justify-end gap-1.5">
+                        <button class="upload-single-netease-btn p-1 text-slate-400 hover:text-rose-500 transition cursor-pointer" data-filename="${song.filename}" title="推送到网易云音乐云盘">
+                            <i data-lucide="cloud-upload" class="w-3.5 h-3.5 text-rose-500"></i>
+                        </button>
                         <a href="${streamUrl}" download="${song.filename}" class="p-1 text-slate-400 hover:text-emerald-600 transition" title="下载文件">
                             <i data-lucide="download" class="w-3.5 h-3.5"></i>
                         </a>
@@ -1066,6 +1144,13 @@ async function loadLibrary(keyword = '') {
             tr.querySelector('.play-lib-btn').addEventListener('click', () => {
                 playTrackFromList(libPlaylist, idx);
             });
+
+            const uploadSingleBtn = tr.querySelector('.upload-single-netease-btn');
+            if (uploadSingleBtn) {
+                uploadSingleBtn.addEventListener('click', () => {
+                    triggerNeteaseUpload([song.filename]);
+                });
+            }
 
             tr.querySelector('.del-lib-btn').addEventListener('click', async (e) => {
                 if (!confirm(`确认彻底删除歌曲 "${song.title}"？文件将从磁盘物理移除。`)) return;
@@ -1289,6 +1374,466 @@ playerSeeker.addEventListener('input', (e) => {
 playerVolume.addEventListener('input', (e) => {
     globalAudio.volume = parseFloat(e.target.value);
 });
+
+// ==============================================================
+// 11. 网易云音乐云盘与扫码登录控制系统 (NetEase Cloud Music Engine)
+// ==============================================================
+
+let neteaseUser = null;
+let neteasePollTimer = null;
+let qrCheckTimer = null;
+let currentQrKey = null;
+
+// 1. 获取并渲染网易云账号状态与云盘容量
+async function loadNeteaseStatus() {
+    try {
+        const resp = await fetch('/api/netease/status');
+        const data = await resp.json();
+
+        if (data.success && data.isLogin && data.profile) {
+            neteaseUser = data.profile;
+            const cloud = data.cloud || { count: 0, size: 0, maxSize: 0 };
+
+            // 渲染已登录状态
+            if (neteaseNotLoggedInCard) neteaseNotLoggedInCard.classList.add('hidden');
+            if (neteaseLoggedInCard) neteaseLoggedInCard.classList.remove('hidden');
+
+            if (neteaseUserAvatar) neteaseUserAvatar.src = data.profile.avatarUrl || '/static/logo.jpg';
+            if (neteaseUserNickname) neteaseUserNickname.innerText = data.profile.nickname || '网易云音乐用户';
+            if (neteaseUserId) neteaseUserId.innerText = String(data.profile.userId || '');
+
+            if (neteaseVipBadge) {
+                if (data.profile.vipType > 0) {
+                    neteaseVipBadge.classList.remove('hidden');
+                } else {
+                    neteaseVipBadge.classList.add('hidden');
+                }
+            }
+
+            // 顶部胶囊状态同步
+            if (headerNeteaseUserText) headerNeteaseUserText.innerText = `${data.profile.nickname}`;
+
+            // 云盘容量计算
+            const usedGb = (cloud.size / (1024 * 1024 * 1024)).toFixed(1);
+            const maxGb = cloud.maxSize > 0 ? (cloud.maxSize / (1024 * 1024 * 1024)).toFixed(1) : '60.0';
+            const pct = cloud.maxSize > 0 ? Math.min(100, Math.round((cloud.size / cloud.maxSize) * 100)) : 0;
+
+            if (neteaseCloudCapacityText) {
+                neteaseCloudCapacityText.innerText = `${usedGb} GB / ${maxGb} GB (共 ${cloud.count} 首曲目)`;
+            }
+            if (neteaseCloudCapacityBar) {
+                neteaseCloudCapacityBar.style.width = `${pct}%`;
+            }
+
+        } else {
+            neteaseUser = null;
+            if (neteaseNotLoggedInCard) neteaseNotLoggedInCard.classList.remove('hidden');
+            if (neteaseLoggedInCard) neteaseLoggedInCard.classList.add('hidden');
+            if (headerNeteaseUserText) headerNeteaseUserText.innerText = '网易云未登录';
+        }
+
+        lucide.createIcons();
+    } catch (e) {
+        console.error('[NetEase] 获取状态异常:', e);
+    }
+}
+
+// 2. 扫码登录模态弹窗控制
+if (openQrLoginBtn) openQrLoginBtn.addEventListener('click', openQrLoginModal);
+if (neteaseReLoginBtn) neteaseReLoginBtn.addEventListener('click', openQrLoginModal);
+if (closeNeteaseQrModalBtn) closeNeteaseQrModalBtn.addEventListener('click', closeQrLoginModal);
+if (neteaseQrRefreshBtn) neteaseQrRefreshBtn.addEventListener('click', refreshQrCode);
+
+async function openQrLoginModal() {
+    if (neteaseQrModal) neteaseQrModal.classList.remove('hidden');
+    await refreshQrCode();
+    lucide.createIcons();
+}
+
+function closeQrLoginModal() {
+    if (neteaseQrModal) neteaseQrModal.classList.add('hidden');
+    if (qrCheckTimer) {
+        clearInterval(qrCheckTimer);
+        qrCheckTimer = null;
+    }
+}
+
+async function refreshQrCode() {
+    if (qrCheckTimer) clearInterval(qrCheckTimer);
+
+    if (neteaseQrLoading) neteaseQrLoading.classList.remove('hidden');
+    if (neteaseQrImg) neteaseQrImg.classList.add('hidden');
+    if (neteaseQrOverlay) neteaseQrOverlay.classList.add('hidden');
+    if (neteaseQrRefreshBtn) neteaseQrRefreshBtn.classList.add('hidden');
+    if (neteaseQrStatusText) neteaseQrStatusText.innerText = '正在生成二维码...';
+    if (neteaseQrStatusDot) neteaseQrStatusDot.className = 'w-2 h-2 rounded-full bg-rose-500 animate-ping';
+
+    try {
+        const resp = await fetch('/api/netease/qr/create', { method: 'POST' });
+        const data = await resp.json();
+
+        if (data.success && data.unikey && data.qrimg) {
+            currentQrKey = data.unikey;
+            if (neteaseQrImg) {
+                neteaseQrImg.src = data.qrimg;
+                neteaseQrImg.classList.remove('hidden');
+            }
+            if (neteaseQrLoading) neteaseQrLoading.classList.add('hidden');
+            if (neteaseQrStatusText) neteaseQrStatusText.innerText = '请打开网易云音乐手机 App 扫码';
+
+            // 启动定时状态轮询 (每 1.5 秒检查一次)
+            qrCheckTimer = setInterval(async () => {
+                try {
+                    const checkResp = await fetch(`/api/netease/qr/check?key=${encodeURIComponent(currentQrKey)}`);
+                    const checkData = await checkResp.json();
+                    const code = checkData.code;
+
+                    if (code === 801) {
+                        // 等待扫码
+                        if (neteaseQrOverlay) neteaseQrOverlay.classList.add('hidden');
+                        if (neteaseQrStatusText) neteaseQrStatusText.innerText = '等待手机端扫码...';
+                    } else if (code === 802) {
+                        // 扫码成功，待手机端确认
+                        if (neteaseQrOverlay) {
+                            neteaseQrOverlay.classList.remove('hidden');
+                            neteaseQrOverlayIcon.setAttribute('data-lucide', 'smartphone');
+                            neteaseQrOverlayIcon.className = 'w-10 h-10 text-rose-500 animate-pulse';
+                            neteaseQrOverlayText.innerText = '已扫描成功，请在手机上点击【确认登录】';
+                        }
+                        if (neteaseQrStatusText) neteaseQrStatusText.innerText = '请在手机端确认授权...';
+                        lucide.createIcons();
+                    } else if (code === 803) {
+                        // 授权登录成功
+                        clearInterval(qrCheckTimer);
+                        qrCheckTimer = null;
+
+                        if (neteaseQrOverlay) {
+                            neteaseQrOverlay.classList.remove('hidden');
+                            neteaseQrOverlayIcon.setAttribute('data-lucide', 'check-circle-2');
+                            neteaseQrOverlayIcon.className = 'w-10 h-10 text-emerald-500';
+                            neteaseQrOverlayText.innerText = '✓ 授权成功，欢迎使用！';
+                        }
+                        if (neteaseQrStatusText) neteaseQrStatusText.innerText = '登录成功，正在加载数据...';
+                        if (neteaseQrStatusDot) neteaseQrStatusDot.className = 'w-2 h-2 rounded-full bg-emerald-500';
+                        lucide.createIcons();
+
+                        setTimeout(() => {
+                            closeQrLoginModal();
+                            loadNeteaseStatus();
+                        }, 1200);
+                    } else if (code === 800) {
+                        // 二维码已过期
+                        clearInterval(qrCheckTimer);
+                        qrCheckTimer = null;
+
+                        if (neteaseQrOverlay) {
+                            neteaseQrOverlay.classList.remove('hidden');
+                            neteaseQrOverlayIcon.setAttribute('data-lucide', 'alert-circle');
+                            neteaseQrOverlayIcon.className = 'w-10 h-10 text-amber-500';
+                            neteaseQrOverlayText.innerText = '二维码已失效，请点击刷新';
+                            if (neteaseQrRefreshBtn) neteaseQrRefreshBtn.classList.remove('hidden');
+                        }
+                        if (neteaseQrStatusText) neteaseQrStatusText.innerText = '二维码已过期';
+                        if (neteaseQrStatusDot) neteaseQrStatusDot.className = 'w-2 h-2 rounded-full bg-amber-500';
+                        lucide.createIcons();
+                    }
+                } catch (e) {
+                    console.error('[NetEase] 检查扫码状态异常:', e);
+                }
+            }, 1500);
+
+        } else {
+            throw new Error(data.error || '生成登录二维码失败');
+        }
+    } catch (err) {
+        if (neteaseQrLoading) neteaseQrLoading.classList.add('hidden');
+        if (neteaseQrStatusText) neteaseQrStatusText.innerText = `错误: ${err.message}`;
+    }
+}
+
+// 3. 退出网易云账号
+if (neteaseLogoutBtn) {
+    neteaseLogoutBtn.addEventListener('click', async () => {
+        if (!confirm('确定退出当前网易云音乐账号？')) return;
+        try {
+            await fetch('/api/netease/logout', { method: 'POST' });
+            neteaseUser = null;
+            loadNeteaseStatus();
+        } catch (e) {
+            alert('退出登录失败: ' + e.message);
+        }
+    });
+}
+
+if (neteaseRefreshBtn) {
+    neteaseRefreshBtn.addEventListener('click', () => {
+        loadNeteaseStatus();
+        fetchNeteaseUploadStatus();
+    });
+}
+
+// 4. 发起同步任务控制
+async function triggerNeteaseUpload(fileNames = null, songIds = null) {
+    // 检查是否登录
+    if (!neteaseUser) {
+        openQrLoginModal();
+        return;
+    }
+
+    try {
+        const payload = {};
+        if (fileNames && fileNames.length > 0) payload.file_names = fileNames;
+        if (songIds && songIds.length > 0) payload.song_ids = songIds;
+
+        const resp = await fetch('/api/netease/upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        const res = await resp.json();
+
+        if (resp.status === 409) {
+            alert('已有网易云同步任务正在运行中，系统排他锁已生效，杜绝并发与重复上传！');
+            switchView('netease');
+            startNeteaseUploadPolling();
+            return;
+        }
+
+        if (!resp.ok) {
+            throw new Error(res.detail || res.message || '发起上传失败');
+        }
+
+        // 切换到网易云视图以便实时监视
+        switchView('netease');
+        startNeteaseUploadPolling();
+
+    } catch (e) {
+        alert('启动网易云同步失败: ' + e.message);
+    }
+}
+
+// 绑定各处触发按钮
+if (neteaseSyncAllBtn) {
+    neteaseSyncAllBtn.addEventListener('click', () => {
+        triggerNeteaseUpload(); // 全量增量同步
+    });
+}
+
+if (batchUploadNeteaseBtn) {
+    batchUploadNeteaseBtn.addEventListener('click', () => {
+        const ids = Array.from(selectedSongIds);
+        if (ids.length === 0) return;
+        triggerNeteaseUpload(null, ids);
+    });
+}
+
+if (completedUploadNeteaseBtn) {
+    completedUploadNeteaseBtn.addEventListener('click', () => {
+        triggerNeteaseUpload();
+    });
+}
+
+if (neteaseCancelUploadBtn) {
+    neteaseCancelUploadBtn.addEventListener('click', async () => {
+        if (!confirm('确定中止当前的网易云上传任务？已上传成功的曲目将保留在云盘。')) return;
+        try {
+            await fetch('/api/netease/upload/cancel', { method: 'POST' });
+            fetchNeteaseUploadStatus();
+        } catch (e) {
+            alert('中止失败: ' + e.message);
+        }
+    });
+}
+
+if (neteaseClearLogsBtn) {
+    neteaseClearLogsBtn.addEventListener('click', () => {
+        if (neteaseLogContainer) {
+            neteaseLogContainer.innerHTML = '<div class="text-slate-500">// 日志已清空</div>';
+        }
+    });
+}
+
+// 5. 实时进度与日志轮询监听核心
+function startNeteaseUploadPolling() {
+    if (neteasePollTimer) clearInterval(neteasePollTimer);
+
+    if (quickNeteaseIndicator) quickNeteaseIndicator.classList.remove('hidden');
+    if (navNeteaseBadge) navNeteaseBadge.classList.remove('hidden');
+
+    fetchNeteaseUploadStatus();
+
+    neteasePollTimer = setInterval(() => {
+        fetchNeteaseUploadStatus();
+    }, 1200);
+}
+
+function stopNeteaseUploadPolling() {
+    if (neteasePollTimer) {
+        clearInterval(neteasePollTimer);
+        neteasePollTimer = null;
+    }
+}
+
+async function fetchNeteaseUploadStatus() {
+    try {
+        const resp = await fetch('/api/netease/upload/status');
+        if (!resp.ok) return;
+        const data = await resp.json();
+
+        renderNeteaseUploadState(data);
+    } catch (e) {
+        console.error('[NetEase] 轮询状态异常:', e);
+    }
+}
+
+function renderNeteaseUploadState(data) {
+    if (!data) return;
+
+    const status = data.status || 'idle';
+    const percent = data.percent || 0;
+
+    // 进度条与百分比
+    if (neteaseProgressPct) neteaseProgressPct.innerText = `${percent}%`;
+    if (neteaseProgressBar) neteaseProgressBar.style.width = `${percent}%`;
+
+    // 顶部与侧边栏指示器
+    if (quickNeteaseText) quickNeteaseText.innerText = `云盘同步 ${percent}%`;
+
+    // 当前处理歌曲信息
+    if (neteaseCurrentFileName) neteaseCurrentFileName.innerText = data.current_file || (status === 'running' ? '准备中...' : '空闲中');
+    if (neteaseCurrentFileSize) neteaseCurrentFileSize.innerText = data.current_size ? `(${data.current_size})` : '';
+    if (neteaseStepMessage) neteaseStepMessage.innerText = data.message || '等待发起...';
+    if (neteaseCurrentIndexText) neteaseCurrentIndexText.innerText = `${data.current || 0} / ${data.total || 0}`;
+
+    // 4 项指标统计
+    if (neteaseMetricTotal) neteaseMetricTotal.innerText = data.total || 0;
+    if (neteaseMetricUploaded) neteaseMetricUploaded.innerText = data.uploaded || 0;
+    if (neteaseMetricSkipped) neteaseMetricSkipped.innerText = data.skipped || 0;
+    if (neteaseMetricFailed) neteaseMetricFailed.innerText = data.failed || 0;
+
+    // 状态徽章与操作按钮
+    if (status === 'running') {
+        if (neteaseStatusBadge) {
+            neteaseStatusBadge.className = 'px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 flex items-center gap-1';
+            neteaseStatusBadge.innerHTML = '<i data-lucide="loader-2" class="w-3 h-3 animate-spin"></i><span>同步中</span>';
+        }
+        if (neteaseCancelUploadBtn) neteaseCancelUploadBtn.classList.remove('hidden');
+        if (quickNeteaseIndicator) quickNeteaseIndicator.classList.remove('hidden');
+        if (navNeteaseBadge) navNeteaseBadge.classList.remove('hidden');
+        if (neteaseCurrentIcon) neteaseCurrentIcon.classList.add('animate-spin');
+
+    } else if (status === 'completed') {
+        if (neteaseStatusBadge) {
+            neteaseStatusBadge.className = 'px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20';
+            neteaseStatusBadge.innerText = '✓ 同步完成';
+        }
+        if (neteaseCancelUploadBtn) neteaseCancelUploadBtn.classList.add('hidden');
+        if (neteaseCurrentIcon) neteaseCurrentIcon.classList.remove('animate-spin');
+        if (navNeteaseBadge) navNeteaseBadge.classList.add('hidden');
+
+        // 停止轮询并在 4 秒后隐藏顶部指示器
+        stopNeteaseUploadPolling();
+        setTimeout(() => {
+            if (quickNeteaseIndicator) quickNeteaseIndicator.classList.add('hidden');
+        }, 4000);
+
+        // 刷新一次账号容量信息
+        loadNeteaseStatus();
+
+    } else if (status === 'cancelled') {
+        if (neteaseStatusBadge) {
+            neteaseStatusBadge.className = 'px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20';
+            neteaseStatusBadge.innerText = '已中止';
+        }
+        if (neteaseCancelUploadBtn) neteaseCancelUploadBtn.classList.add('hidden');
+        if (quickNeteaseIndicator) quickNeteaseIndicator.classList.add('hidden');
+        if (navNeteaseBadge) navNeteaseBadge.classList.add('hidden');
+        if (neteaseCurrentIcon) neteaseCurrentIcon.classList.remove('animate-spin');
+        stopNeteaseUploadPolling();
+
+    } else if (status === 'failed') {
+        if (neteaseStatusBadge) {
+            neteaseStatusBadge.className = 'px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-rose-500/10 text-rose-500 border border-rose-500/20';
+            neteaseStatusBadge.innerText = '执行异常';
+        }
+        if (neteaseCancelUploadBtn) neteaseCancelUploadBtn.classList.add('hidden');
+        if (quickNeteaseIndicator) quickNeteaseIndicator.classList.add('hidden');
+        if (navNeteaseBadge) navNeteaseBadge.classList.add('hidden');
+        if (neteaseCurrentIcon) neteaseCurrentIcon.classList.remove('animate-spin');
+        stopNeteaseUploadPolling();
+
+    } else {
+        if (neteaseStatusBadge) {
+            neteaseStatusBadge.className = 'px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400';
+            neteaseStatusBadge.innerText = '空闲中';
+        }
+        if (neteaseCancelUploadBtn) neteaseCancelUploadBtn.classList.add('hidden');
+        if (quickNeteaseIndicator) quickNeteaseIndicator.classList.add('hidden');
+        if (navNeteaseBadge) navNeteaseBadge.classList.add('hidden');
+        if (neteaseCurrentIcon) neteaseCurrentIcon.classList.remove('animate-spin');
+        stopNeteaseUploadPolling();
+    }
+
+    // 渲染实时日志流
+    if (neteaseLogContainer && Array.isArray(data.logs) && data.logs.length > 0) {
+        neteaseLogContainer.innerHTML = '';
+        data.logs.forEach(log => {
+            const row = document.createElement('div');
+            row.className = 'flex items-start gap-2 leading-relaxed';
+
+            let colorClass = 'text-slate-300';
+            let tagBadge = '';
+
+            if (log.level === 'success') {
+                colorClass = 'text-emerald-400 font-medium';
+                tagBadge = '<span class="text-[10px] text-emerald-500">[成功]</span>';
+            } else if (log.level === 'skip') {
+                colorClass = 'text-sky-400';
+                tagBadge = '<span class="text-[10px] text-sky-500">[跳过]</span>';
+            } else if (log.level === 'error') {
+                colorClass = 'text-rose-400 font-semibold';
+                tagBadge = '<span class="text-[10px] text-rose-500">[失败]</span>';
+            } else if (log.level === 'warn') {
+                colorClass = 'text-amber-400';
+                tagBadge = '<span class="text-[10px] text-amber-500">[警告]</span>';
+            } else {
+                tagBadge = '<span class="text-[10px] text-slate-500">[信息]</span>';
+            }
+
+            row.innerHTML = `
+                <span class="text-slate-600 flex-shrink-0 select-none">[${log.time || '--:--:--'}]</span>
+                ${tagBadge}
+                <span class="${colorClass} break-all flex-1">${log.text || ''}</span>
+            `;
+            neteaseLogContainer.appendChild(row);
+        });
+
+        // 自动滚动到底部
+        if (neteaseAutoScrollCheck && neteaseAutoScrollCheck.checked) {
+            neteaseLogContainer.scrollTop = neteaseLogContainer.scrollHeight;
+        }
+    }
+
+    lucide.createIcons();
+}
+
+// 6. 刷新页面时检查是否有后台正在运行的网易云同步任务
+async function checkActiveNeteaseUploadOnLoad() {
+    try {
+        const resp = await fetch('/api/netease/upload/status');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (data.status === 'running') {
+            // 刷新恢复活跃任务监视
+            startNeteaseUploadPolling();
+        } else {
+            renderNeteaseUploadState(data);
+        }
+    } catch (e) {
+        console.error('[NetEase] 检查后台任务异常:', e);
+    }
+}
 
 // 运行初始化
 init();

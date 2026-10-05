@@ -19,6 +19,8 @@ services:
       - /ssd/music:/music
       # 持久化历史归档数据库与应用数据
       - ./data:/app/data
+      # 挂载网易云同步引擎
+      - ./netease_engine:/app/netease_engine
     environment:
       - HOST=0.0.0.0
       - PORT=8000
