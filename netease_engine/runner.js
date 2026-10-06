@@ -52,6 +52,18 @@ function normalizeTitle(str) {
         .trim();
 }
 
+function formatApiError(e) {
+    if (!e) return '未知错误';
+    if (typeof e === 'string') return e;
+    if (e.message) return e.message;
+    if (e.body && (e.body.message || e.body.msg)) return e.body.message || e.body.msg;
+    try {
+        return JSON.stringify(e.body || e);
+    } catch (_) {
+        return String(e);
+    }
+}
+
 let activeLockFile = null;
 
 function cleanupLock() {
@@ -284,39 +296,72 @@ async function handleUpload() {
     try {
         console.log(JSON.stringify({ event: 'log', level: 'info', text: '正在验证网易云凭证并同步云盘索引...' }));
         let offset = 0;
-        const limit = 1000;
+        const limit = 200;
         let hasMore = true;
 
-        while (hasMore && offset < 5000) {
-            const cloudRes = await api.user_cloud({ limit, offset, cookie });
-            const list = cloudRes.body?.data || [];
-            cloudSongsTotal = cloudRes.body?.count || list.length;
+        while (hasMore && offset < 20000) {
+            let pageData = null;
+            let lastErr = null;
+
+            for (let retry = 0; retry < 3; retry++) {
+                try {
+                    const res = await api.user_cloud({ limit, offset, cookie });
+                    if (res && res.status === 200) {
+                        pageData = res;
+                        break;
+                    }
+                    lastErr = new Error(`HTTP状态异常: ${res?.status}`);
+                } catch (err) {
+                    lastErr = err;
+                    if (retry < 2) {
+                        await new Promise(r => setTimeout(r, 2000));
+                    }
+                }
+            }
+
+            if (!pageData) {
+                const errMsg = formatApiError(lastErr);
+                throw new Error(`第 ${Math.floor(offset / limit) + 1} 页拉取失败: ${errMsg}`);
+            }
+
+            const list = pageData.body?.data || [];
+            cloudSongsTotal = pageData.body?.count || list.length;
 
             list.forEach(item => {
                 if (item.songName) cloudTitleSet.add(normalizeTitle(item.songName));
                 if (item.fileName) cloudTitleSet.add(normalizeTitle(item.fileName));
                 if (item.artist && item.songName) {
                     cloudTitleSet.add(normalizeTitle(`${item.artist}-${item.songName}`));
+                    cloudTitleSet.add(normalizeTitle(`${item.songName}-${item.artist}`));
                 }
             });
 
-            if (cloudRes.body?.hasMore && list.length === limit) {
+            if (pageData.body?.hasMore && list.length === limit) {
                 offset += limit;
             } else {
                 hasMore = false;
             }
         }
+
         console.log(JSON.stringify({
             event: 'log',
             level: 'success',
-            text: `已建立云端查重索引，现有云盘曲目 ${cloudSongsTotal} 首`
+            text: `已建立云端查重索引，现有云盘曲目 ${cloudSongsTotal} 首（生成 ${cloudTitleSet.size} 个比对特征）`
         }));
     } catch (e) {
+        const errorDetail = formatApiError(e);
         console.log(JSON.stringify({
             event: 'log',
-            level: 'warn',
-            text: '获取云盘索引警告: ' + (e?.message || String(e))
+            level: 'error',
+            text: `获取云盘索引失败: ${errorDetail}`
         }));
+        // 安全熔断屏障：禁止在索引为空时盲目上传，避免导致云盘产生重复曲目
+        state.status = 'failed';
+        state.message = `获取云盘索引失败，为防止重复上传已安全中止: ${errorDetail}`;
+        writeState(state);
+        console.log(JSON.stringify({ event: 'error', error: state.message }));
+        cleanupLock();
+        return;
     }
 
     // 确定待上传文件清单
