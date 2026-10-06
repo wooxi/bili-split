@@ -601,30 +601,67 @@ function bindTrackCardEvents(container, track) {
 aiNormalizeAllBtn.addEventListener('click', async () => {
     if (!currentVideo || !currentVideo.tracks || currentVideo.tracks.length === 0) return;
     aiNormalizeAllBtn.disabled = true;
-    aiNormalizeAllBtn.innerHTML = `<i data-lucide="loader-2" class="w-3 h-3 animate-spin"></i><span>处理中...</span>`;
+    aiNormalizeAllBtn.innerHTML = `<i data-lucide="loader-2" class="w-3 h-3 animate-spin"></i><span>AI规范中...</span>`;
     lucide.createIcons();
 
     try {
-        for (const track of currentVideo.tracks) {
-            const resp = await fetch('/api/ai-normalize', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    title: track.raw_title || `${track.artist} - ${track.title}`,
-                    uploader: currentVideo.uploader,
-                    desc: currentVideo.title
-                })
-            });
-            const res = await resp.json();
-            if (res.artist && res.title) {
-                track.artist = res.artist;
-                track.title = res.title;
-                track.is_ai = res.is_ai;
+        const batchPayload = {
+            tracks: currentVideo.tracks.map(t => ({
+                id: t.id,
+                raw_title: t.raw_title || `${t.artist} - ${t.title}`,
+                artist: t.artist,
+                title: t.title
+            })),
+            uploader: currentVideo.uploader,
+            desc: currentVideo.title
+        };
+
+        const resp = await fetch('/api/ai-normalize-batch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(batchPayload)
+        });
+
+        if (resp.ok) {
+            const data = await resp.json();
+            if (data.tracks && Array.isArray(data.tracks)) {
+                const normMap = new Map();
+                data.tracks.forEach(item => normMap.set(item.id, item));
+
+                currentVideo.tracks.forEach(track => {
+                    const norm = normMap.get(track.id);
+                    if (norm && norm.artist && norm.title) {
+                        track.artist = norm.artist;
+                        track.title = norm.title;
+                        track.is_ai = norm.is_ai ?? true;
+                    }
+                });
+            }
+        } else {
+            // 批量接口异常时降级逐首尝试
+            for (const track of currentVideo.tracks) {
+                try {
+                    const singleResp = await fetch('/api/ai-normalize', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            title: track.raw_title || `${track.artist} - ${track.title}`,
+                            uploader: currentVideo.uploader,
+                            desc: currentVideo.title
+                        })
+                    });
+                    const res = await singleResp.json();
+                    if (res.artist && res.title) {
+                        track.artist = res.artist;
+                        track.title = res.title;
+                        track.is_ai = res.is_ai;
+                    }
+                } catch (_) {}
             }
         }
         renderTrackList();
     } catch (e) {
-        alert('批量处理失败');
+        alert('批量处理失败: ' + (e.message || '网络异常'));
     } finally {
         aiNormalizeAllBtn.disabled = false;
         aiNormalizeAllBtn.innerHTML = `<i data-lucide="sparkles" class="w-3 h-3 text-purple-600 dark:text-purple-400"></i><span>AI 规范歌名</span>`;

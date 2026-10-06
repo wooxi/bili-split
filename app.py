@@ -23,7 +23,7 @@ from config import (
     save_settings
 )
 from parser import extract_bvid, fetch_bilibili_video_info, clean_song_info_rule_based
-from ai_service import ai_normalize_song, test_ai_connection
+from ai_service import ai_normalize_song, ai_normalize_batch, test_ai_connection
 from audio_engine import (
     download_audio_source,
     download_cover,
@@ -69,6 +69,17 @@ class ParseRequest(BaseModel):
 
 class AiNormalizeRequest(BaseModel):
     title: str
+    uploader: Optional[str] = "群星"
+    desc: Optional[str] = ""
+
+class AiNormalizeBatchItem(BaseModel):
+    id: int
+    raw_title: Optional[str] = ""
+    artist: Optional[str] = ""
+    title: Optional[str] = ""
+
+class AiNormalizeBatchRequest(BaseModel):
+    tracks: List[AiNormalizeBatchItem]
     uploader: Optional[str] = "群星"
     desc: Optional[str] = ""
 
@@ -197,6 +208,27 @@ async def api_ai_normalize(req: AiNormalizeRequest):
     
     a, t = clean_song_info_rule_based(req.title, default_artist=req.uploader)
     return {"artist": a, "title": t, "is_ai": False}
+
+@app.post("/api/ai-normalize-batch")
+async def api_ai_normalize_batch(req: AiNormalizeBatchRequest):
+    """批量调用 AI 大模型一次性规范整组曲目列表 (秒级返回)"""
+    track_dicts = [t.model_dump() for t in req.tracks]
+    res = ai_normalize_batch(track_dicts, uploader=req.uploader, context_desc=req.desc)
+    if res:
+        return {"tracks": res}
+    
+    # 降级：回退传统规则清理
+    fallback = []
+    for t in req.tracks:
+        text = t.raw_title or f"{t.artist} - {t.title}".strip(" - ")
+        a, s = clean_song_info_rule_based(text, default_artist=req.uploader)
+        fallback.append({
+            "id": t.id,
+            "artist": a,
+            "title": s,
+            "is_ai": False
+        })
+    return {"tracks": fallback}
 
 @app.post("/api/parse")
 async def api_parse(req: ParseRequest):

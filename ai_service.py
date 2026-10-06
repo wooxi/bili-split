@@ -65,10 +65,11 @@ def ai_normalize_song(raw_title: str, uploader: str = "群星", context_desc: st
                 {"role": "user", "content": user_prompt}
             ],
             "temperature": 0.1,
-            "max_tokens": 150
+            "max_tokens": 300,
+            "reasoning_effort": "low"
         }
         
-        resp = requests.post(url, headers=headers, json=payload, timeout=8)
+        resp = requests.post(url, headers=headers, json=payload, timeout=25)
         if resp.status_code == 200:
             result = resp.json()
             content = result["choices"][0]["message"]["content"].strip()
@@ -83,6 +84,105 @@ def ai_normalize_song(raw_title: str, uploader: str = "群星", context_desc: st
         print(f"AI 规范化调用异常: {e}")
         
     return None
+
+def ai_normalize_batch(tracks: list, uploader: str = "群星", context_desc: str = "") -> list:
+    """批量调用 AI 大模型对多首歌曲进行一次性标准化规范，大幅节省耗时并避免分段超时"""
+    if not tracks:
+        return []
+
+    cfg = load_settings()
+    api_base = cfg.get("ai_api_base", "").rstrip('/')
+    api_key = cfg.get("ai_api_key", "").strip()
+    model = cfg.get("ai_model", "gemini-3.8-flash").strip()
+
+    if not api_key or not api_base:
+        return []
+
+    system_prompt = """你是一个专业的音乐曲库整理专家。你的任务是将杂乱的B站音乐视频分段曲目标题规范化为标准的音乐元数据列表。
+必须输出严格的 JSON 数组: [{"id": 0, "artist": "歌手名", "title": "歌名"}, ...]
+
+【核心规则】
+1. 歌手 (artist):
+   - 提取真实的歌手、音乐人或翻唱/改编UP主（例如 寂寞的渲染_、周杰伦、徐良）。
+   - 绝对禁止把“摇滚现场”、“现场版”、“国语经典”、“民谣”等风格/场景词当作歌手！
+   - 如果视频是 UP主 翻唱/填词/改编，歌手填 UP主（例如 寂寞的渲染_），歌名附上 (Cover 原唱)；如果是 AI 改编，歌手填 UP主 或 AI改编。
+
+2. 歌名 (title):
+   - 提取歌曲的真实核心名称（例如 坏女孩、红装、Baby、斩杀线(牵丝戏)）。
+   - 必须彻底剥离营销词、音质画质词（如 4K、Hi-Res、优化版、完整版、无杂音、动态歌词）。
+   - 必须彻底剥离曲风描述语句（如“但是英文填词，R&B风格改编”、“甜甜的R&B风格改编”等，这些是描述不是歌名！）。
+   - 版本规范：如果是翻唱且知道原唱，附上 (Cover 原唱)；如果是 AI 改编，附上 (AI改编)；如果是 Live，附上 (Live)。
+
+3. 输出要求: 仅输出标准的 JSON 数组，顺序和 id 与输入列表完全对应。不要包含 markdown 代码块或其他解释。"""
+
+    input_items = [
+        {
+            "id": t.get("id", idx),
+            "raw_title": t.get("raw_title") or f"{t.get('artist', '')} - {t.get('title', '')}".strip(" - ")
+        }
+        for idx, t in enumerate(tracks)
+    ]
+
+    user_prompt = f"""待整理的曲目列表:
+{json.dumps(input_items, ensure_ascii=False, indent=2)}
+
+视频UP主: "{uploader}"
+视频简介补充信息: "{context_desc[:300] if context_desc else ''}"
+
+请按规则输出标准的 JSON 数组:"""
+
+    try:
+        url = f"{api_base}/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            "temperature": 0.1,
+            "max_tokens": 2000,
+            "reasoning_effort": "low"
+        }
+
+        resp = requests.post(url, headers=headers, json=payload, timeout=40)
+        if resp.status_code == 200:
+            content = resp.json()["choices"][0]["message"]["content"].strip()
+            arr_match = re.search(r'\[[\s\S]*\]', content)
+            if arr_match:
+                parsed_list = json.loads(arr_match.group(0))
+                id_map = {
+                    item["id"]: item
+                    for item in parsed_list
+                    if isinstance(item, dict) and "id" in item and "artist" in item and "title" in item
+                }
+                
+                result = []
+                for idx, t in enumerate(tracks):
+                    tid = t.get("id", idx)
+                    if tid in id_map:
+                        norm = id_map[tid]
+                        result.append({
+                            "id": tid,
+                            "artist": str(norm["artist"]).strip(),
+                            "title": str(norm["title"]).strip(),
+                            "is_ai": True
+                        })
+                    else:
+                        result.append({
+                            "id": tid,
+                            "artist": t.get("artist"),
+                            "title": t.get("title"),
+                            "is_ai": False
+                        })
+                return result
+    except Exception as e:
+        print(f"批量 AI 规范化调用异常: {e}")
+
+    return []
 
 def test_ai_connection(api_base: str, api_key: str, model: str) -> dict:
     """测试 AI 网关连通性与模型可用性"""
